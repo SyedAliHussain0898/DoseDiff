@@ -26,15 +26,14 @@ parser.add_argument("--local_rank", default=-1, type=int)
 args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 
-torch.cuda.set_device(args.local_rank)
-dist.init_process_group(backend='nccl', init_method="env://")
+torch.cuda.set_device(0)
 device = torch.device("cuda")
 
 train_bs = args.bs
 val_bs = args.bs
 lr_max = 0.0001
 img_size = (128, 128)
-all_epochs = args.epoch
+all_epochs = 2
 data_root_train = 'preprocessed_data/NPY/train'
 data_root_val = 'preprocessed_data/NPY/validation'
 L2 = 0.0001
@@ -43,23 +42,22 @@ val_bs = 2 * args.bs
 
 save_name = 'T{}_bs{}_epoch{}'.format(args.T, ture_bs, args.epoch)
 
-if dist.get_rank() == 0:
-    if os.path.exists(os.path.join('trained_models', save_name)):
-        shutil.rmtree(os.path.join('trained_models', save_name))
-    os.makedirs(os.path.join('trained_models', save_name), exist_ok=True)
-    print(save_name)
 
-    train_writer = SummaryWriter(os.path.join('trained_models', save_name, 'log/train'), flush_secs=2)
+if os.path.exists(os.path.join('trained_models', save_name)):
+    shutil.rmtree(os.path.join('trained_models', save_name))
+os.makedirs(os.path.join('trained_models', save_name), exist_ok=True)
+print(save_name)
+
+train_writer = SummaryWriter(os.path.join('trained_models', save_name, 'log/train'), flush_secs=2)
 
 train_data = Dataset_PSDM_train(data_root=data_root_train)
-train_samper = Data.distributed.DistributedSampler(train_data)
+#train_samper = Data.distributed.DistributedSampler(train_data)
 val_data = Dataset_PSDM_val(data_root=data_root_val)
-val_samper = Data.distributed.DistributedSampler(val_data)
-train_dataloader = DataLoader(dataset=train_data, batch_size=train_bs, sampler=train_samper, shuffle=False, num_workers=4, pin_memory=True)
-val_dataloader = DataLoader(dataset=val_data, batch_size=val_bs, sampler=val_samper, shuffle=False, num_workers=4, pin_memory=True)
+#val_samper = Data.distributed.DistributedSampler(val_data)
+train_dataloader = DataLoader(dataset=train_data, batch_size=train_bs, sampler=train_data, shuffle=False, num_workers=4, pin_memory=True)
+val_dataloader = DataLoader(dataset=val_data, batch_size=val_bs, sampler=val_data, shuffle=False, num_workers=4, pin_memory=True)
 
-if dist.get_rank() == 0:
-    print('train_lenth: %i   val_lenth: %i' % (train_data.len, val_data.len))
+print('train_lenth: %i   val_lenth: %i' % (train_data.len, val_data.len))
 
 dis_channels = 20
 
@@ -85,8 +83,7 @@ diffusion_test = SpacedDiffusion(use_timesteps=space_timesteps(args.T, 'ddim4'),
                                 loss_type=gd.LossType.MSE, rescale_timesteps=False)
 
 model.cuda()
-model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank, broadcast_buffers=False,
-            bucket_cap_mb=128, find_unused_parameters=False)
+model = model.to(device)
 
 schedule_sampler = create_named_schedule_sampler("uniform", diffusion)
 optimizer = optim.AdamW(model.parameters(), lr=lr_max, weight_decay=L2)
@@ -108,19 +105,19 @@ for epoch in range(all_epochs):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
-        dist.all_reduce(loss, op=torch.distributed.ReduceOp.SUM)
+
         loss = loss / dist.get_world_size()
 
         train_epoch_loss.append(loss.item())
-        if dist.get_rank() == 0:
-            print('[%d/%d, %d/%d] train_loss: %.3f' %
-                  (epoch + 1, all_epochs, i + 1, len(train_dataloader), loss.item()))
+
+        print('[%d/%d, %d/%d] train_loss: %.3f' %
+                (epoch + 1, all_epochs, i + 1, len(train_dataloader), loss.item()))
     lr_scheduler.step()
 
-    if dist.get_rank() == 0:
-        train_epoch_loss = np.mean(train_epoch_loss)
-        train_writer.add_scalar('lr', lr, epoch + 1)
-        train_writer.add_scalar('train_loss', train_epoch_loss, epoch + 1)
+
+    train_epoch_loss = np.mean(train_epoch_loss)
+    train_writer.add_scalar('lr', lr, epoch + 1)
+    train_writer.add_scalar('train_loss', train_epoch_loss, epoch + 1)
 
     if (epoch == 0) or (((epoch + 1) % 10) == 0):
         model.eval()
@@ -149,27 +146,27 @@ for epoch in range(all_epochs):
                     ture_rtdose.append(rtdose[0:1, :, :, :].cpu())
                     pred_rtdose.append(pred[0:1, :, :, :].cpu())
 
-        if dist.get_rank() == 0:
-            val_epoch_MAE = np.mean(val_epoch_MAE)
-            train_writer.add_scalar('val_MAE', val_epoch_MAE, epoch + 1)
 
-            image_CT = torch.cat(image_CT, dim=0)
-            image_CT = make_grid(image_CT, 2, normalize=True)
-            train_writer.add_image('image_CT', image_CT, epoch + 1)
-            ture_rtdose = torch.cat(ture_rtdose, dim=0)
-            ture_rtdose = make_grid(ture_rtdose, 2, normalize=True)
-            train_writer.add_image('ture_rtdose', ture_rtdose, epoch + 1)
-            pred_rtdose = torch.cat(pred_rtdose, dim=0)
-            pred_rtdose = make_grid(pred_rtdose, 2, normalize=True)
-            train_writer.add_image('pred_rtdose', pred_rtdose, epoch + 1)
+        val_epoch_MAE = np.mean(val_epoch_MAE)
+        train_writer.add_scalar('val_MAE', val_epoch_MAE, epoch + 1)
 
+        image_CT = torch.cat(image_CT, dim=0)
+        image_CT = make_grid(image_CT, 2, normalize=True)
+        train_writer.add_image('image_CT', image_CT, epoch + 1)
+        ture_rtdose = torch.cat(ture_rtdose, dim=0)
+        ture_rtdose = make_grid(ture_rtdose, 2, normalize=True)
+        train_writer.add_image('ture_rtdose', ture_rtdose, epoch + 1)
+        pred_rtdose = torch.cat(pred_rtdose, dim=0)
+        pred_rtdose = make_grid(pred_rtdose, 2, normalize=True)
+        train_writer.add_image('pred_rtdose', pred_rtdose, epoch + 1)
+
+        torch.save(model.state_dict(),
+                    os.path.join('trained_models', save_name, 'model_epoch' + str(epoch + 1) + '.pth'))
+        if val_epoch_MAE < best_MAE:
+            best_MAE = val_epoch_MAE
             torch.save(model.state_dict(),
-                       os.path.join('trained_models', save_name, 'model_epoch' + str(epoch + 1) + '.pth'))
-            if val_epoch_MAE < best_MAE:
-                best_MAE = val_epoch_MAE
-                torch.save(model.state_dict(),
-                           os.path.join('trained_models', save_name, 'model_best_mae.pth'))
+                        os.path.join('trained_models', save_name, 'model_best_mae.pth'))
 
-if dist.get_rank() == 0:
-    train_writer.close()
-    print('saved_model_name:', save_name)
+
+train_writer.close()
+print('saved_model_name:', save_name)
