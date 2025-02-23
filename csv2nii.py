@@ -70,6 +70,6 @@ def csv2nii(provided_data_dir, save_dir):
                 NiiDataWrite(save_path, mask, spacing, origin, direction)
 
 if __name__ == '__main__':
-    data_dir = r'provided-data'
-    save_dir = r'preprocessed_data'
+    data_dir = r'/Users/syedhussain/Documents/Semester 4 Spring 25/Capstone/DoseDiff_mine/provided-data'
+    save_dir = r'/Users/syedhussain/Documents/Semester 4 Spring 25/Capstone/DoseDiff_mine/preprocessed_data'
     csv2nii(data_dir, save_dir)

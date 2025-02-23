@@ -4,7 +4,7 @@ import os
 import numpy as np
 import shutil
 
-data_dir = r'preprocessed_data'
+data_dir = r'/Users/syedhussain/Documents/Semester 4 Spring 25/Capstone/DoseDiff_mine/preprocessed_data'
 
 for pats in ['train-pats', 'validation-pats', 'test-pats']:
     save_dir = os.path.join(data_dir, '{}_preprocess'.format(pats))

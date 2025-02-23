@@ -54,8 +54,8 @@ train_data = Dataset_PSDM_train(data_root=data_root_train)
 #train_samper = Data.distributed.DistributedSampler(train_data)
 val_data = Dataset_PSDM_val(data_root=data_root_val)
 #val_samper = Data.distributed.DistributedSampler(val_data)
-train_dataloader = DataLoader(dataset=train_data, batch_size=train_bs, sampler=train_data, shuffle=False, num_workers=4, pin_memory=True)
-val_dataloader = DataLoader(dataset=val_data, batch_size=val_bs, sampler=val_data, shuffle=False, num_workers=4, pin_memory=True)
+train_dataloader = DataLoader(dataset=train_data, batch_size=train_bs, shuffle=False, num_workers=2, pin_memory=True)
+val_dataloader = DataLoader(dataset=val_data, batch_size=val_bs, shuffle=False, num_workers=2, pin_memory=True)
 
 print('train_lenth: %i   val_lenth: %i' % (train_data.len, val_data.len))
 

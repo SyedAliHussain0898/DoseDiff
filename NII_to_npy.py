@@ -2,8 +2,8 @@ import os
 from Nii_utils import NiiDataRead
 import numpy as np
 
-original_dir = r'preprocessed_data'
-save_dir = r'preprocessed_data/NPY'
+original_dir = r'/Users/syedhussain/Documents/Semester 4 Spring 25/Capstone/DoseDiff_mine/preprocessed_data'
+save_dir = r'/Users/syedhussain/Documents/Semester 4 Spring 25/Capstone/DoseDiff_mine/preprocessed_data/NPY'
 
 name_list = ['ct',  'dose', 'Mask_Brainstem', 'Mask_Esophagus', 'Mask_Larynx', 'Mask_LeftParotid', 'Mask_Mandible',
              'Mask_possible_dose_mask', 'Mask_PTV56', 'Mask_PTV63', 'Mask_PTV70', 'Mask_RightParotid', 'Mask_SpinalCord',
