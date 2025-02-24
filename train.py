@@ -15,9 +15,9 @@ from torchvision.utils import make_grid
 from torch.optim.lr_scheduler import MultiStepLR
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--bs', type=int, default=32, help='batch size')
+parser.add_argument('--bs', type=int, default=8, help='batch size')
 parser.add_argument('--T', type=int, default=1000, help='T')
-parser.add_argument('--epoch', type=int, default=2000, help='all_epochs')
+parser.add_argument('--epoch', type=int, default=2, help='all_epochs')
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
