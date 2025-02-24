@@ -1,4 +1,5 @@
 import os
+import io
 import numpy as np
 import torch
 import argparse
@@ -51,7 +52,9 @@ net = UNetModel_MS_Former(image_size=img_size, in_channels=1, ct_channels=1, dis
                        use_scale_shift_norm=True,
                        resblock_updown=False, use_new_attention_order=False)
 net.cuda()
-checkpoint = torch.load(args.model_path)
+with open(args.model_path, 'rb') as f:
+    buffer = io.BytesIO(f.read())
+    checkpoint = torch.load(buffer)
 net.load_state_dict({k.replace('module.', ''): v for k, v in checkpoint.items()})
 net.eval()
 
