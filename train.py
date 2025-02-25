@@ -20,7 +20,7 @@ parser.add_argument('--T', type=int, default=1000, help='T')
 parser.add_argument('--epoch', type=int, default=2, help='all_epochs')
 args = parser.parse_args()
 
-device = torch.device("cuda")
+device = torch.device("cpu")
 
 train_bs = args.bs
 val_bs = args.bs
