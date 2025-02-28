@@ -25,7 +25,7 @@ img_size = (128, 128)
 
 dis_channels = 20
 
-new_dir = '/content/MyDrive/Results/ddim{}_TTA{}'.format(args.ddim, args.TTA)
+new_dir = '/content/drive/MyDrive/Results/ddim{}_TTA{}'.format(args.ddim, args.TTA)
 
 if os.path.exists(new_dir):
     shutil.rmtree(new_dir)
