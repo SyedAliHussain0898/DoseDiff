@@ -17,7 +17,7 @@ from torch.optim.lr_scheduler import MultiStepLR
 parser = argparse.ArgumentParser()
 parser.add_argument('--bs', type=int, default=32, help='batch size')
 parser.add_argument('--T', type=int, default=1000, help='T')
-parser.add_argument('--epoch', type=int, default=100, help='all_epochs')
+parser.add_argument('--epoch', type=int, default=50, help='all_epochs')
 args = parser.parse_args()
 
 device = torch.device("cuda")
