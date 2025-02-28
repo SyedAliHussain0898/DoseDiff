@@ -20,7 +20,7 @@ parser.add_argument('--ddim', type=str, default='8', help='ddim')
 args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 
-data_dir = r'preprocessed_data/test-pats_preprocess'
+data_dir = '/content/DoseDiff/preprocessed_data/test-pats_preprocess'
 img_size = (128, 128)
 
 dis_channels = 20
