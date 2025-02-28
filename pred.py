@@ -187,7 +187,7 @@ with torch.no_grad():
                      pred_rtdose, spacing, origin, direction)
 
 Dose_score, Dose_std, DVH_score, DVH_std = get_Dose_score_and_DVH_score(prediction_dir=os.path.join(new_dir, 'predictions'),
-                                                     gt_dir=r'preprocessed_data/test-pats_preprocess')
+                                                     gt_dir=r'/content/DoseDiff/preprocessed_data/test-pats_preprocess')
 print('Dose_score: {}'.format(Dose_score))
 print('DVH_score: {}'.format(DVH_score))
 
