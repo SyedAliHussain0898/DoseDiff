@@ -51,6 +51,7 @@ def get_DVH_metrics(_dose, _mask, mode, spacing=None):
 def get_Dose_score_and_DVH_score(prediction_dir, gt_dir):
     list_dose_dif = []
     list_DVH_dif = []
+    dvh_data = {}
 
     list_patient_ids = tqdm(os.listdir(prediction_dir))
     for patient_id in list_patient_ids:
