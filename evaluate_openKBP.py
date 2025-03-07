@@ -95,4 +95,14 @@ def get_Dose_score_and_DVH_score(prediction_dir, gt_dir):
                 for metric in gt_DVH.keys():
                     list_DVH_dif.append(abs(gt_DVH[metric] - pred_DVH[metric]))
 
-    return np.mean(list_dose_dif), np.std(list_dose_dif), np.mean(list_DVH_dif), np.std(list_DVH_dif)
+                    # Collect DVH data for plotting
+                if structure_name not in dvh_data:
+                    dvh_data[structure_name] = {'dose': [], 'volume': []}
+                
+                _roi_dose = pred[structure > 0]
+                hist, bin_edges = np.histogram(_roi_dose, bins=100, range=(0, _roi_dose.max()), density=True)
+                cumulative_volume = np.cumsum(hist[::-1])[::-1] / hist.sum() * 100  # Normalize to percentage volume
+                dvh_data[structure_name]['dose'] = bin_edges[:-1]
+                dvh_data[structure_name]['volume'] = cumulative_volume
+
+    return np.mean(list_dose_dif), np.std(list_dose_dif), np.mean(list_DVH_dif), np.std(list_DVH_dif), dvh_data
