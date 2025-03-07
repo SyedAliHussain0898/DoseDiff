@@ -99,7 +99,7 @@ def get_Dose_score_and_DVH_score(prediction_dir, gt_dir):
                     list_DVH_dif.append(abs(gt_DVH[metric] - pred_DVH[metric]))
 
                     # Collect DVH data for plotting
-                if structure_name not in dvh_data:
+                if structure_name not in dvh_data_pred:
                     dvh_data_pred[structure_name] = {'dose': [], 'volume': []}
                 
                 _roi_dose = pred[structure > 0]
