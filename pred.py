@@ -220,8 +220,8 @@ def plot_dvh(dvh_data_pred,dvh_data_gt, save_path=new_dir):
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"DVH plot saved at: {save_path}")
 
-plot_dvh(dvh_data_pred)
-plot_dvh(dvh_data_gt)
+plot_dvh(dvh_data_pred, dvh_data_gt)
+
 
 
 with open(os.path.join(new_dir, 'score.txt'), 'w') as file:
