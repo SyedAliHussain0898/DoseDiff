@@ -187,12 +187,12 @@ with torch.no_grad():
         NiiDataWrite(os.path.join(new_dir, 'predictions', ID, 'dose.nii.gz'),
                      pred_rtdose, spacing, origin, direction)
 
-Dose_score, Dose_std, DVH_score, DVH_std, dvh_data = get_Dose_score_and_DVH_score(prediction_dir=os.path.join(new_dir, 'predictions'),
+Dose_score, Dose_std, DVH_score, DVH_std, dvh_data_pred, dvh_data_gt = get_Dose_score_and_DVH_score(prediction_dir=os.path.join(new_dir, 'predictions'),
                                                      gt_dir=r'/content/DoseDiff/preprocessed_data/test-pats_preprocess')
 print('Dose_score: {}'.format(Dose_score))
 print('DVH_score: {}'.format(DVH_score))
 
-def plot_dvh(dvh_data, save_path=new_dir):
+def plot_dvh(dvh_data_pred,dvh_data_gt, save_path=new_dir):
     """
     Plots the DVH data and optionally saves the plot to a file.
 
@@ -203,8 +203,11 @@ def plot_dvh(dvh_data, save_path=new_dir):
     plt.figure(figsize=(10, 6))
     colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
     
-    for i, (structure_name, data) in enumerate(dvh_data.items()):
-        plt.plot(data['dose'], data['volume'], label=structure_name, color=colors[i % len(colors)])
+    for i, (structure_name, data) in enumerate(dvh_data_pred.items()):
+        plt.plot(data['dose'], data['volume'], label=structure_name, color=colors[i % len(colors)],linestyle="-")
+        
+    for i, (structure_name, data) in enumerate(dvh_data_gt.items()):
+        plt.plot(data['dose'], data['volume'], label=structure_name, color=colors[i % len(colors)],linestyle="--")
     
     plt.xlabel('Dose (cGy)')
     plt.ylabel('Normalized Volume (%)')
@@ -217,7 +220,9 @@ def plot_dvh(dvh_data, save_path=new_dir):
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"DVH plot saved at: {save_path}")
 
-plot_dvh(dvh_data)
+plot_dvh(dvh_data_pred)
+plot_dvh(dvh_data_gt)
+
 
 with open(os.path.join(new_dir, 'score.txt'), 'w') as file:
     file.write('Dose_score: {} {}\nDVH_score: {} {}'.format(Dose_score, Dose_std, DVH_score, DVH_std))
