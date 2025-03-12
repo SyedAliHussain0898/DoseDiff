@@ -7,10 +7,10 @@ import numpy as np
 import torch
 import argparse
 import shutil
-from guided_diffusion.unet import UNetModel_MS_Former_MultiStage
-from guided_diffusion import gaussian_diffusion as gd
-from guided_diffusion.respace import MultiStageSpacedDiffusion, space_timesteps
-from guided_diffusion.resample import create_named_schedule_sampler
+from guided_diffusion_copy.unet import UNetModel_MS_Former_MultiStage
+from guided_diffusion_copy import gaussian_diffusion as gd
+from guided_diffusion_copy.respace import MultiStageSpacedDiffusion, space_timesteps
+from guided_diffusion_copy.resample import create_named_schedule_sampler
 from torchvision.utils import make_grid
 from torch.optim.lr_scheduler import MultiStepLR
 
