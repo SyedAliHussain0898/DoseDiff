@@ -1219,3 +1219,297 @@ class UNetModel_MS_Former(nn.Module):
             h = module(h, emb)
         h = h.type(x.dtype)
         return self.out(h)
+
+class UNetModel_MS_Former_MultiStage(nn.Module):
+    """
+    A UNet model with multiple decoders for different diffusion stages and a transformer fusion module.
+    """
+    def __init__(
+        self,
+        image_size,
+        in_channels,
+        ct_channels,
+        dis_channels,
+        model_channels,
+        out_channels,
+        num_res_blocks,
+        attention_resolutions,
+        dropout=0,
+        channel_mult=(1, 2, 4, 8),
+        conv_resample=True,
+        dims=2,
+        num_classes=None,
+        use_checkpoint=False,
+        use_fp16=False,
+        num_heads=1,
+        num_head_channels=-1,
+        num_heads_upsample=-1,
+        use_scale_shift_norm=False,
+        resblock_updown=False,
+        use_new_attention_order=False,
+        num_stages=3,
+    ):
+        super().__init__()
+        
+        # Save parameters
+        self.image_size = image_size
+        self.in_channels = in_channels
+        self.ct_channels = ct_channels
+        self.dis_channels = dis_channels
+        self.model_channels = model_channels
+        self.out_channels = out_channels
+        self.num_res_blocks = num_res_blocks
+        self.attention_resolutions = attention_resolutions
+        self.dropout = dropout
+        self.channel_mult = channel_mult
+        self.conv_resample = conv_resample
+        self.num_classes = num_classes
+        self.use_checkpoint = use_checkpoint
+        self.dtype = torch.float16 if use_fp16 else torch.float32
+        self.num_heads = num_heads
+        self.num_head_channels = num_head_channels
+        self.num_heads_upsample = num_heads_upsample
+        self.num_stages = num_stages
+        
+        # Time embedding
+        time_embed_dim = model_channels * 4
+        self.time_embed = nn.Sequential(
+            linear(model_channels, time_embed_dim),
+            nn.SiLU(),
+            linear(time_embed_dim, time_embed_dim),
+        )
+        
+        # Implement condition embedding (similar to the original model)
+        # This part would depend on the original UNetModel_MS_Former implementation
+        # For example, CT and distance map embedding would be here
+        self.ct_input = nn.Conv2d(ct_channels, model_channels, 3, padding=1)
+        self.dis_input = nn.Conv2d(dis_channels, model_channels, 3, padding=1)
+        
+        # ViT Fusion Module (adapted from original)
+        self.fusion_module = ViTFusionModule(
+            dim=model_channels,
+            depth=6,
+            heads=8,
+            mlp_dim=model_channels * 4,
+            dropout=0.1,
+        )
+        
+        # Encoder implementation (shared across all stages)
+        self.input_blocks = nn.ModuleList([
+            TimestepEmbedSequential(
+                conv_nd(dims, in_channels, model_channels, 3, padding=1)
+            )
+        ])
+        
+        # Create encoder blocks (similar to original implementation)
+        input_block_chans = [model_channels]
+        ch = model_channels
+        ds = 1
+        
+        # Create shared encoder blocks
+        for level, mult in enumerate(channel_mult):
+            for _ in range(num_res_blocks):
+                layers = [
+                    ResBlock(
+                        ch,
+                        time_embed_dim,
+                        dropout,
+                        out_channels=int(mult * model_channels),
+                        dims=dims,
+                        use_checkpoint=use_checkpoint,
+                        use_scale_shift_norm=use_scale_shift_norm,
+                    )
+                ]
+                ch = int(mult * model_channels)
+                if ds in attention_resolutions:
+                    layers.append(
+                        AttentionBlock(
+                            ch,
+                            use_checkpoint=use_checkpoint,
+                            num_heads=num_heads,
+                            num_head_channels=num_head_channels,
+                            use_new_attention_order=use_new_attention_order,
+                        )
+                    )
+                self.input_blocks.append(TimestepEmbedSequential(*layers))
+                input_block_chans.append(ch)
+            
+            if level != len(channel_mult) - 1:
+                self.input_blocks.append(
+                    TimestepEmbedSequential(
+                        ResBlock(
+                            ch,
+                            time_embed_dim,
+                            dropout,
+                            out_channels=ch,
+                            dims=dims,
+                            use_checkpoint=use_checkpoint,
+                            use_scale_shift_norm=use_scale_shift_norm,
+                            down=True,
+                        )
+                        if resblock_updown
+                        else Downsample(ch, conv_resample, dims=dims, out_channels=ch)
+                    )
+                )
+                input_block_chans.append(ch)
+                ds *= 2
+        
+        # Middle block (shared across stages)
+        self.middle_block = TimestepEmbedSequential(
+            ResBlock(
+                ch,
+                time_embed_dim,
+                dropout,
+                dims=dims,
+                use_checkpoint=use_checkpoint,
+                use_scale_shift_norm=use_scale_shift_norm,
+            ),
+            AttentionBlock(
+                ch,
+                use_checkpoint=use_checkpoint,
+                num_heads=num_heads,
+                num_head_channels=num_head_channels,
+                use_new_attention_order=use_new_attention_order,
+            ),
+            ResBlock(
+                ch,
+                time_embed_dim,
+                dropout,
+                dims=dims,
+                use_checkpoint=use_checkpoint,
+                use_scale_shift_norm=use_scale_shift_norm,
+            ),
+        )
+        
+        # Stage-specific decoders
+        # Create multiple output block sets, one for each stage
+        self.output_blocks = nn.ModuleList()
+        for stage in range(num_stages):
+            stage_output_blocks = nn.ModuleList([])
+            for level, mult in list(enumerate(channel_mult))[::-1]:
+                for i in range(num_res_blocks + 1):
+                    ich = input_block_chans.pop()
+                    layers = [
+                        ResBlock(
+                            ch + ich,
+                            time_embed_dim,
+                            dropout,
+                            out_channels=int(model_channels * mult),
+                            dims=dims,
+                            use_checkpoint=use_checkpoint,
+                            use_scale_shift_norm=use_scale_shift_norm,
+                        )
+                    ]
+                    ch = int(model_channels * mult)
+                    if ds in attention_resolutions:
+                        layers.append(
+                            AttentionBlock(
+                                ch,
+                                use_checkpoint=use_checkpoint,
+                                num_heads=num_heads_upsample,
+                                num_head_channels=num_head_channels,
+                                use_new_attention_order=use_new_attention_order,
+                            )
+                        )
+                    if level and i == num_res_blocks:
+                        layers.append(
+                            ResBlock(
+                                ch,
+                                time_embed_dim,
+                                dropout,
+                                out_channels=ch,
+                                dims=dims,
+                                use_checkpoint=use_checkpoint,
+                                use_scale_shift_norm=use_scale_shift_norm,
+                                up=True,
+                            )
+                            if resblock_updown
+                            else Upsample(ch, conv_resample, dims=dims, out_channels=ch)
+                        )
+                        ds //= 2
+                    stage_output_blocks.append(TimestepEmbedSequential(*layers))
+            self.output_blocks.append(stage_output_blocks)
+            
+            # Reset for next stage
+            input_block_chans = [model_channels] + [model_channels * mult for mult in channel_mult for _ in range(num_res_blocks)] + [model_channels * mult for mult in channel_mult[:-1]]
+            ch = channel_mult[-1] * model_channels
+            ds = 2 ** (len(channel_mult) - 1)
+        
+        # Stage-specific output layers
+        self.out = nn.ModuleList([
+            nn.Sequential(
+                normalization(ch),
+                nn.SiLU(),
+                zero_module(conv_nd(dims, ch, out_channels, 3, padding=1)),
+            ) for _ in range(num_stages)
+        ])
+
+    def forward(self, x, timesteps, stages=None, **kwargs):
+        """
+        Apply the model to an input batch.
+        
+        Args:
+            x: Input tensor [B, C, H, W]
+            timesteps: Tensor of diffusion timesteps [B]
+            stages: Tensor of stage indices for each sample [B]
+            **kwargs: Additional inputs (ct, dis)
+            
+        Returns:
+            Output tensor
+        """
+        # Process condition inputs
+        ct = kwargs.get("ct")
+        dis = kwargs.get("dis")
+        
+        # If stages is not provided, use stage 0 (default)
+        if stages is None:
+            stages = torch.zeros_like(timesteps, dtype=torch.long)
+        
+        # Time embedding
+        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
+        
+        # Process CT and distance map inputs
+        ct_feat = self.ct_input(ct)
+        dis_feat = self.dis_input(dis)
+        
+        # Apply ViT fusion module to combine CT and distance features
+        fused_cond = self.fusion_module(ct_feat, dis_feat)
+        
+        # Run shared encoder
+        h = x.type(self.dtype)
+        encoder_outputs = []
+        
+        # Process through input blocks (encoder)
+        for module in self.input_blocks:
+            h = module(h, emb, fused_cond)
+            encoder_outputs.append(h)
+        
+        # Process through middle block
+        h = self.middle_block(h, emb, fused_cond)
+        
+        # Process through stage-specific decoders
+        results = []
+        
+        # For each sample in the batch, select the appropriate decoder based on its stage
+        for i in range(x.shape[0]):
+            stage_idx = stages[i].item()
+            
+            # Use the middle output as starting point
+            stage_h = h[i:i+1]
+            
+            # Get the appropriate decoder for this stage
+            stage_decoder = self.output_blocks[stage_idx]
+            
+            # Apply the decoder
+            for j, module in enumerate(stage_decoder):
+                # Get the corresponding encoder output for skip connection
+                enc_out = encoder_outputs[-j-1][i:i+1]
+                stage_h = torch.cat([stage_h, enc_out], dim=1)
+                stage_h = module(stage_h, emb[i:i+1], fused_cond[i:i+1])
+            
+            # Apply the final output layer for this stage
+            stage_output = self.out[stage_idx](stage_h)
+            results.append(stage_output)
+        
+        # Concatenate the results back into a batch
+        return torch.cat(results, dim=0)
