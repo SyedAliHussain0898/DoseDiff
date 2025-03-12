@@ -27,8 +27,8 @@ val_bs = args.bs
 lr_max = 0.0001
 img_size = (128, 128)
 all_epochs = args.epoch
-data_root_train = 'preprocessed_data/NPY/train'
-data_root_val = 'preprocessed_data/NPY/validation'
+data_root_train = '/content/DoseDiff/preprocessed_data/NPY/train'
+data_root_val = '/content/DoseDiff/preprocessed_data/NPY/validation'
 L2 = 0.0001
 val_bs = 2 * args.bs
 
