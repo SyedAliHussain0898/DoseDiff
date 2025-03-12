@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import argparse
 import shutil
+import matplotlib.pyplot as plt
 from Nii_utils import NiiDataRead, NiiDataWrite
 from guided_diffusion.unet import UNetModel_MS_Former
 from guided_diffusion import gaussian_diffusion as gd
@@ -20,12 +21,12 @@ parser.add_argument('--ddim', type=str, default='8', help='ddim')
 args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 
-data_dir = 'preprocessed_data/test-pats_preprocess'
+data_dir = '/content/DoseDiff/preprocessed_data/test-pats_preprocess'
 img_size = (128, 128)
 
 dis_channels = 20
 
-new_dir = 'Results/ddim{}_TTA{}'.format(args.ddim, args.TTA)
+new_dir = '/content/drive/MyDrive/Results/ddim{}_TTA{}'.format(args.ddim, args.TTA)
 
 if os.path.exists(new_dir):
     shutil.rmtree(new_dir)
@@ -186,10 +187,42 @@ with torch.no_grad():
         NiiDataWrite(os.path.join(new_dir, 'predictions', ID, 'dose.nii.gz'),
                      pred_rtdose, spacing, origin, direction)
 
-Dose_score, Dose_std, DVH_score, DVH_std = get_Dose_score_and_DVH_score(prediction_dir=os.path.join(new_dir, 'predictions'),
-                                                     gt_dir=r'preprocessed_data/test-pats')
+Dose_score, Dose_std, DVH_score, DVH_std, dvh_data_pred, dvh_data_gt = get_Dose_score_and_DVH_score(prediction_dir=os.path.join(new_dir, 'predictions'),
+                                                     gt_dir=r'/content/DoseDiff/preprocessed_data/test-pats_preprocess')
 print('Dose_score: {}'.format(Dose_score))
 print('DVH_score: {}'.format(DVH_score))
+
+def plot_dvh(dvh_data_pred,dvh_data_gt, save_path=new_dir):
+    """
+    Plots the DVH data and optionally saves the plot to a file.
+
+    Parameters:
+        dvh_data (dict): Dictionary containing dose and volume data for each structure.
+        save_path (str): Path to save the plot image. If None, the plot is not saved.
+    """
+    plt.figure(figsize=(10, 6))
+    colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
+    
+    for i, (structure_name, data) in enumerate(dvh_data_pred.items()):
+        plt.plot(data['dose'], data['volume'], label=structure_name, color=colors[i % len(colors)],linestyle="-")
+        
+    for i, (structure_name, data) in enumerate(dvh_data_gt.items()):
+        plt.plot(data['dose'], data['volume'], label=structure_name, color=colors[i % len(colors)],linestyle="--")
+    
+    plt.xlabel('Dose (cGy)')
+    plt.ylabel('Normalized Volume (%)')
+    plt.title('Dose Volume Histogram (DVH)')
+    plt.legend(loc='best')
+    plt.grid(True)
+
+    if save_path:
+        # Save the plot to the specified location
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"DVH plot saved at: {save_path}")
+
+plot_dvh(dvh_data_pred, dvh_data_gt)
+
+
 
 with open(os.path.join(new_dir, 'score.txt'), 'w') as file:
     file.write('Dose_score: {} {}\nDVH_score: {} {}'.format(Dose_score, Dose_std, DVH_score, DVH_std))

@@ -17,6 +17,7 @@ def get_3D_Dose_dif(pred, gt, possible_dose_mask=None):
     return dif
 
 
+
 def get_DVH_metrics(_dose, _mask, mode, spacing=None):
     output = {}
 
@@ -51,6 +52,9 @@ def get_DVH_metrics(_dose, _mask, mode, spacing=None):
 def get_Dose_score_and_DVH_score(prediction_dir, gt_dir):
     list_dose_dif = []
     list_DVH_dif = []
+    dvh_data_pred = {}
+    dvh_data_gt={}
+    
 
     list_patient_ids = tqdm(os.listdir(prediction_dir))
     for patient_id in list_patient_ids:
@@ -95,4 +99,23 @@ def get_Dose_score_and_DVH_score(prediction_dir, gt_dir):
                 for metric in gt_DVH.keys():
                     list_DVH_dif.append(abs(gt_DVH[metric] - pred_DVH[metric]))
 
-    return np.mean(list_dose_dif), np.std(list_dose_dif), np.mean(list_DVH_dif), np.std(list_DVH_dif)
+                    # Collect DVH data for plotting
+                if structure_name not in dvh_data_pred:
+                    dvh_data_pred[structure_name] = {'dose': [], 'volume': []}
+                
+                _roi_dose = pred[structure > 0]
+                hist, bin_edges = np.histogram(_roi_dose, bins=100, range=(0, _roi_dose.max()), density=True)
+                cumulative_volume = np.cumsum(hist[::-1])[::-1] / hist.sum() * 100  # Normalize to percentage volume
+                dvh_data_pred[structure_name]['dose'] = bin_edges[:-1]
+                dvh_data_pred[structure_name]['volume'] = cumulative_volume
+                
+                if structure_name not in dvh_data_gt:
+                    dvh_data_gt[structure_name] = {'dose': [], 'volume': []}
+                
+                _roi_dose = gt[structure > 0]
+                hist, bin_edges = np.histogram(_roi_dose, bins=100, range=(0, _roi_dose.max()), density=True)
+                cumulative_volume = np.cumsum(hist[::-1])[::-1] / hist.sum() * 100  # Normalize to percentage volume
+                dvh_data_gt[structure_name]['dose'] = bin_edges[:-1]
+                dvh_data_gt[structure_name]['volume'] = cumulative_volume
+
+    return np.mean(list_dose_dif), np.std(list_dose_dif), np.mean(list_DVH_dif), np.std(list_DVH_dif), dvh_data_pred, dvh_data_gt
