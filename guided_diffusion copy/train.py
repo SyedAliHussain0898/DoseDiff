@@ -7,9 +7,9 @@ import numpy as np
 import torch
 import argparse
 import shutil
-from guided_diffusion.unet import UNetModel_MS_Former
+from guided_diffusion.unet import UNetModel_MS_Former_MultiStage
 from guided_diffusion import gaussian_diffusion as gd
-from guided_diffusion.respace import SpacedDiffusion, space_timesteps
+from guided_diffusion.respace import MultiStageSpacedDiffusion, space_timesteps
 from guided_diffusion.resample import create_named_schedule_sampler
 from torchvision.utils import make_grid
 from torch.optim.lr_scheduler import MultiStepLR
@@ -50,26 +50,52 @@ print('train_lenth: %i   val_lenth: %i' % (train_data.len, val_data.len))
 
 dis_channels = 20
 
-model = UNetModel_MS_Former(image_size=img_size, in_channels=1, ct_channels=1, dis_channels=dis_channels,
-                       model_channels=128, out_channels=1, num_res_blocks=2, attention_resolutions=(16, 32),
-                       dropout=0,
-                       channel_mult=(1, 1, 2, 3, 4), conv_resample=True, dims=2, num_classes=None,
-                       use_checkpoint=False,
-                       use_fp16=False, num_heads=4, num_head_channels=-1, num_heads_upsample=-1,
-                       use_scale_shift_norm=True,
-                       resblock_updown=False, use_new_attention_order=False)
+model = UNetModel_MS_Former_MultiStage(
+    image_size=img_size,
+    in_channels=1,
+    ct_channels=1,
+    dis_channels=dis_channels,
+    model_channels=128,
+    out_channels=1,
+    num_res_blocks=2,
+    attention_resolutions=(16, 32),
+    dropout=0,
+    channel_mult=(1, 1, 2, 3, 4),
+    conv_resample=True,
+    dims=2,
+    num_classes=None,
+    use_checkpoint=False,
+    use_fp16=False,
+    num_heads=4,
+    num_head_channels=-1,
+    num_heads_upsample=-1,
+    use_scale_shift_norm=True,
+    resblock_updown=False,
+    use_new_attention_order=False,
+    num_stages=3,  # Using 3 stages for the diffusion process
+)
 
-diffusion = SpacedDiffusion(use_timesteps=space_timesteps(args.T, [args.T]),
-                            betas=gd.get_named_beta_schedule("linear", args.T),
-                            model_mean_type=(gd.ModelMeanType.EPSILON),
-                            model_var_type=(gd.ModelVarType.FIXED_LARGE),
-                            loss_type=gd.LossType.MSE, rescale_timesteps=False)
+diffusion = MultiStageSpacedDiffusion(
+    use_timesteps=space_timesteps(args.T, [args.T]),
+    betas=gd.get_named_beta_schedule("linear", args.T),
+    model_mean_type=(gd.ModelMeanType.EPSILON),
+    model_var_type=(gd.ModelVarType.FIXED_LARGE),
+    loss_type=gd.LossType.MSE,
+    rescale_timesteps=False,
+    num_stages=3,
+    stage_distribution="geometric",  # Using geometric distribution for stage boundaries
+)
 
-diffusion_test = SpacedDiffusion(use_timesteps=space_timesteps(args.T, 'ddim4'),
-                                betas=gd.get_named_beta_schedule("linear", args.T),
-                                model_mean_type=(gd.ModelMeanType.EPSILON),
-                                model_var_type=(gd.ModelVarType.FIXED_LARGE),
-                                loss_type=gd.LossType.MSE, rescale_timesteps=False)
+diffusion_test = MultiStageSpacedDiffusion(
+    use_timesteps=space_timesteps(args.T, 'ddim4'),
+    betas=gd.get_named_beta_schedule("linear", args.T),
+    model_mean_type=(gd.ModelMeanType.EPSILON),
+    model_var_type=(gd.ModelVarType.FIXED_LARGE),
+    loss_type=gd.LossType.MSE,
+    rescale_timesteps=False,
+    num_stages=3,
+    stage_distribution="geometric",
+)
 
 model.to(device)
 
