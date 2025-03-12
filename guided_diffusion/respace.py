@@ -1,7 +1,8 @@
 import numpy as np
 import torch as th
 
-from .gaussian_diffusion import GaussianDiffusion
+from .gaussian_diffusion import GaussianDiffusion, ModelMeanType, ModelVarType, LossType
+
 
 
 def space_timesteps(num_timesteps, section_counts):
@@ -111,6 +112,64 @@ class SpacedDiffusion(GaussianDiffusion):
     def _scale_timesteps(self, t):
         # Scaling is done by the wrapped model.
         return t
+
+class MultiStageGaussianDiffusion(GaussianDiffusion):
+    """
+    A multi-stage diffusion process that uses different decoders for different
+    timestep ranges.
+    
+    :param stage_boundaries: List of integers indicating the boundaries between stages
+                            (in timestep indices, starting from 0).
+    :param kwargs: The kwargs to create the base diffusion process.
+    """
+    
+    def __init__(self, stage_boundaries, **kwargs):
+        super().__init__(**kwargs)
+        
+        # Define stage boundaries (should be sorted in descending order)
+        # e.g., [800, 400, 0] for a 1000-step diffusion with 3 stages
+        self.stage_boundaries = sorted(stage_boundaries, reverse=True)
+        self.num_stages = len(self.stage_boundaries)
+        
+        # Validate boundaries
+        assert self.stage_boundaries[-1] == 0, "Last boundary must be 0"
+        assert self.stage_boundaries[0] < self.num_timesteps, "First boundary must be less than num_timesteps"
+        
+        # Create mapping from timestep to stage
+        self.timestep_to_stage = th.zeros(self.num_timesteps, dtype=th.long)
+        for i, boundary in enumerate(self.stage_boundaries[:-1]):
+            self.timestep_to_stage[boundary:self.stage_boundaries[i-1]] = i
+            
+    def get_stage(self, t):
+        """
+        Get the stage for the given timesteps.
+        
+        :param t: a tensor of timestep indices.
+        :return: a tensor of stage indices.
+        """
+        return self.timestep_to_stage[t].to(t.device)
+    
+    def p_mean_variance(self, model, x, t, clip_denoised=True, denoised_fn=None, model_kwargs=None):
+        """
+        Apply the model to get p(x_{t-1} | x_t), using the appropriate stage decoder.
+        
+        :param model: A multi-stage model with separate decode methods for each stage.
+        :param x: the [N x C x ...] tensor at time t.
+        :param t: a 1-D Tensor of timesteps.
+        :param clip_denoised: if True, clip the denoised signal into [-1, 1].
+        :param denoised_fn: if not None, a function which applies to the x_start prediction.
+        :param model_kwargs: if not None, a dict of extra keyword arguments to pass to the model.
+        :return: a dict with the model outputs.
+        """
+        stages = self.get_stage(t)
+        model_output = model(x, self._scale_timesteps(t), stages=stages, **model_kwargs)
+        
+        # The rest of the function is the same as the original p_mean_variance
+        # We process model_output the same way as in the parent class
+        # ...
+
+        # Copy the rest of the implementation from GaussianDiffusion.p_mean_variance()
+        # with the only change being the model call above
 
 
 class _WrappedModel:
