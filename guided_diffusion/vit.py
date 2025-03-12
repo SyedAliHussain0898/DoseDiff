@@ -295,52 +295,59 @@ class MultiScaleFusionModule(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.dim = dim
+        
+        # Ensure transformer dimension is divisible by number of heads
+        if dim is None:
+            # Make sure the dimension is at least 8 and divisible by heads
+            self.dim = max(8, ((out_channels + heads - 1) // heads) * heads)
+        else:
+            self.dim = dim
+            
         self.depth = depth
         self.heads = heads
-        self.mlp_dim = mlp_dim or out_channels
+        self.mlp_dim = mlp_dim or self.dim * 4  # Typical transformer MLP dimension
         self.dropout = dropout
-
+        
         # Branch 1: 1x1 convolution for fine-grained details
         self.branch1 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels // 4, kernel_size=1),
+            nn.Conv2d(in_channels, self.dim // 4, kernel_size=1),
             nn.SiLU(),
-            nn.BatchNorm2d(out_channels // 4)
+            nn.BatchNorm2d(self.dim // 4)
         )
         
         # Branch 2: 3x3 convolution for medium-scale features
         self.branch2 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels // 4, kernel_size=1),
+            nn.Conv2d(in_channels, self.dim // 4, kernel_size=1),
             nn.SiLU(),
-            nn.BatchNorm2d(out_channels // 4),
-            nn.Conv2d(out_channels // 4, out_channels // 4, kernel_size=3, padding=1),
+            nn.BatchNorm2d(self.dim // 4),
+            nn.Conv2d(self.dim // 4, self.dim // 4, kernel_size=3, padding=1),
             nn.SiLU(),
-            nn.BatchNorm2d(out_channels // 4)
+            nn.BatchNorm2d(self.dim // 4)
         )
         
         # Branch 3: 5x5 convolution for larger-scale features
         self.branch3 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels // 4, kernel_size=1),
+            nn.Conv2d(in_channels, self.dim // 4, kernel_size=1),
             nn.SiLU(),
-            nn.BatchNorm2d(out_channels // 4),
-            nn.Conv2d(out_channels // 4, out_channels // 4, kernel_size=5, padding=2),
+            nn.BatchNorm2d(self.dim // 4),
+            nn.Conv2d(self.dim // 4, self.dim // 4, kernel_size=5, padding=2),
             nn.SiLU(),
-            nn.BatchNorm2d(out_channels // 4)
+            nn.BatchNorm2d(self.dim // 4)
         )
         
         # Branch 4: Max pooling followed by 1x1 convolution
         self.branch4 = nn.Sequential(
             nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
-            nn.Conv2d(in_channels, out_channels // 4, kernel_size=1),
+            nn.Conv2d(in_channels, self.dim // 4, kernel_size=1),
             nn.SiLU(),
-            nn.BatchNorm2d(out_channels // 4)
+            nn.BatchNorm2d(self.dim // 4)
         )
         
         # Transformer for feature fusion
-        self.transformer = TransformerBlock(dim=out_channels, heads=heads, mlp_dim=mlp_dim, dropout=dropout)
+        self.transformer = TransformerBlock(dim=self.dim, heads=heads, mlp_dim=self.mlp_dim, dropout=dropout)
         
-        # Projection to combine all branches
-        self.proj = nn.Conv2d(out_channels, out_channels, kernel_size=1)
+        # Projection to convert back to output channels
+        self.proj = nn.Conv2d(self.dim, out_channels, kernel_size=1)
     
     def forward(self, x):
         # Process each branch
