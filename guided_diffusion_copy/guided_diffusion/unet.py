@@ -18,7 +18,7 @@ from .nn import (
     timestep_embedding,
 )
 
-from .vit import ViT_fusion
+from .vit import ViT_fusion, MultiScaleFusionModule
 
 
 class AttentionPool2d(nn.Module):
@@ -1286,7 +1286,7 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         self.dis_input = nn.Conv2d(dis_channels, model_channels, 3, padding=1)
         
         # ViT Fusion Module (adapted from original)
-        self.fusion_module = ViTFusionModule(
+        self.fusion_module = MultiScaleFusionModule(
             dim=model_channels,
             depth=6,
             heads=8,
