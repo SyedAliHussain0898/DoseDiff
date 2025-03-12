@@ -1484,7 +1484,6 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         # Process through input blocks (encoder)
         for module in self.input_blocks:
             h = module(h, emb)
-            h = h + fused_cond  # Add fusion result after each block
             encoder_outputs.append(h)
 
         
