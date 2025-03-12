@@ -1288,8 +1288,8 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         # ViT Fusion Module (adapted from original)
         self.fusion_module = MultiScaleFusionModule(
             dim=model_channels,
-            in_channels = in_channels,
-            out_channels = out_channels,
+            in_channels = model_channels,
+            out_channels = model_channels,
             depth=6,
             heads=8,
             mlp_dim=model_channels * 4,
