@@ -349,7 +349,22 @@ class MultiScaleFusionModule(nn.Module):
         # Projection to convert back to output channels
         self.proj = nn.Conv2d(self.dim, out_channels, kernel_size=1)
     
-    def forward(self, x):
+    def forward(self, x, y=None):
+        """
+        Forward pass with optional second input.
+        
+        Args:
+            x: First input tensor (CT features)
+            y: Second input tensor (distance map features), optional
+        
+        Returns:
+            Fused features
+        """
+        # If second input is provided, combine with first input
+        if y is not None:
+            # Simple solution: average the two inputs
+            x = (x + y) / 2
+        
         # Process each branch
         branch1 = self.branch1(x)
         branch2 = self.branch2(x)
