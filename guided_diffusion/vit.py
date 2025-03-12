@@ -291,13 +291,16 @@ class TransformerBlock(nn.Module):
         return x
 
 class MultiScaleFusionModule(nn.Module):
-    """
-    Multi-Scale Fusion Module for combining features at different scales.
-    Inspired by Inception-style architectures from the research.
-    """
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, dim=None, depth=6, heads=8, mlp_dim=None, dropout=0.1):
         super().__init__()
-        
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.dim = dim
+        self.depth = depth
+        self.heads = heads
+        self.mlp_dim = mlp_dim or out_channels
+        self.dropout = dropout
+
         # Branch 1: 1x1 convolution for fine-grained details
         self.branch1 = nn.Sequential(
             nn.Conv2d(in_channels, out_channels // 4, kernel_size=1),
@@ -333,6 +336,9 @@ class MultiScaleFusionModule(nn.Module):
             nn.BatchNorm2d(out_channels // 4)
         )
         
+        # Transformer for feature fusion
+        self.transformer = TransformerBlock(dim=out_channels, heads=heads, mlp_dim=mlp_dim, dropout=dropout)
+        
         # Projection to combine all branches
         self.proj = nn.Conv2d(out_channels, out_channels, kernel_size=1)
     
@@ -345,6 +351,11 @@ class MultiScaleFusionModule(nn.Module):
         
         # Concatenate all branches along the channel dimension
         combined = torch.cat([branch1, branch2, branch3, branch4], dim=1)
+        
+        # Apply transformer for feature fusion
+        combined = combined.flatten(2).transpose(1, 2)  # [B, H*W, C]
+        combined = self.transformer(combined)  # [B, H*W, C]
+        combined = combined.transpose(1, 2).reshape(x.shape[0], -1, x.shape[2], x.shape[3])  # [B, C, H, W]
         
         # Final projection
         return self.proj(combined)
