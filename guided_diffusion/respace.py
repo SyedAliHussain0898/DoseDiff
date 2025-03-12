@@ -172,7 +172,7 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
         """
         Get the stage for the given timestep indices.
         """
-        if isinstance(t_idx, torch.Tensor):
+        if isinstance(t_idx, th.Tensor):
             t_idx = t_idx.cpu().numpy()
         
         if isinstance(t_idx, (int, np.int64)):
@@ -192,7 +192,7 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
         
         # Get the stage for each timestep
         stages = self.get_stage(t_idx)
-        stages = torch.tensor(stages, device=t.device, dtype=torch.long)
+        stages = th.tensor(stages, device=t.device, dtype=th.long)
         
         # Add stage information to model_kwargs
         model_kwargs["stages"] = stages
@@ -212,7 +212,7 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
         
         # Get the stage for each timestep
         stages = self.get_stage(t_idx)
-        stages = torch.tensor(stages, device=t.device, dtype=torch.long)
+        stages = th.tensor(stages, device=t.device, dtype=th.long)
         
         # Add stage information to model_kwargs
         model_kwargs["stages"] = stages
