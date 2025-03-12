@@ -1489,7 +1489,7 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
 
         
         # Process through middle block
-        h = self.middle_block(h, emb, fused_cond)
+        h = self.middle_block(h, emb)
         
         # Process through stage-specific decoders
         results = []
@@ -1509,7 +1509,7 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
                 # Get the corresponding encoder output for skip connection
                 enc_out = encoder_outputs[-j-1][i:i+1]
                 stage_h = torch.cat([stage_h, enc_out], dim=1)
-                stage_h = module(stage_h, emb[i:i+1], fused_cond[i:i+1])
+                stage_h = module(stage_h, emb[i:i+1])
             
             # Apply the final output layer for this stage
             stage_output = self.out[stage_idx](stage_h)
