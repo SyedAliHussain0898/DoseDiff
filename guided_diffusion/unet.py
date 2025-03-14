@@ -1224,32 +1224,13 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
     """
     A UNet model with multiple decoders for different diffusion stages and a transformer fusion module.
     """
-    def __init__(
-        self,
-        image_size,
-        in_channels,
-        ct_channels,
-        dis_channels,
-        model_channels,
-        out_channels,
-        num_res_blocks,
-        attention_resolutions,
-        dropout=0,
-        channel_mult=(1, 2, 4, 8),
-        conv_resample=True,
-        dims=2,
-        num_classes=None,
-        use_checkpoint=False,
-        use_fp16=False,
-        num_heads=1,
-        num_head_channels=-1,
-        num_heads_upsample=-1,
-        use_scale_shift_norm=False,
-        resblock_updown=False,
-        use_new_attention_order=False,
-        num_stages=3,
-    ):
-        super().__init__()
+def __init__(self, image_size, in_channels, ct_channels, dis_channels, model_channels, 
+             out_channels, num_res_blocks, attention_resolutions, dropout=0, 
+             channel_mult=(1, 2, 4, 8), conv_resample=True, dims=2, num_classes=None, 
+             use_checkpoint=False, use_fp16=False, num_heads=1, num_head_channels=-1, 
+             num_heads_upsample=-1, use_scale_shift_norm=False, resblock_updown=False, 
+             use_new_attention_order=False, num_stages=3):
+    super().__init__()
         
         # Save parameters
         self.image_size = image_size
@@ -1383,17 +1364,25 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
             ),
         )
         
-        # Stage-specific decoders
-        # Create multiple output block sets, one for each stage
+
+    # Store the original encoder output channels
+        orig_input_block_chans = input_block_chans.copy()
+        orig_ch = channel_mult[-1] * model_channels
+        
+        # Stage-specific decoders with consistent architecture
         self.output_blocks = nn.ModuleList()
         for stage in range(num_stages):
+            # Reset to the original values for each stage to ensure consistency
+            input_block_chans = orig_input_block_chans.copy()
+            ch = orig_ch
+            
             stage_output_blocks = nn.ModuleList([])
             for level, mult in list(enumerate(channel_mult))[::-1]:
                 for i in range(num_res_blocks + 1):
                     ich = input_block_chans.pop()
                     layers = [
                         ResBlock(
-                            ch + ich,
+                            ch + ich,  # This ensures consistent channel expectations
                             time_embed_dim,
                             dropout,
                             out_channels=int(model_channels * mult),
@@ -1489,6 +1478,9 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         
         # Process through middle block
         h = self.middle_block(h, emb)
+        if fused_cond.shape[2:] != h.shape[2:]:
+            fused_cond = F.interpolate(fused_cond, size=h.shape[2:], mode='bilinear', align_corners=False)
+        h = h + fused_cond
         
         # Process through stage-specific decoders
         results = []
