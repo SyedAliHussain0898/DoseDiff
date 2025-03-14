@@ -1230,7 +1230,7 @@ def __init__(self, image_size, in_channels, ct_channels, dis_channels, model_cha
              use_checkpoint=False, use_fp16=False, num_heads=1, num_head_channels=-1, 
              num_heads_upsample=-1, use_scale_shift_norm=False, resblock_updown=False, 
              use_new_attention_order=False, num_stages=3):
-    super().__init__()
+        super().__init__()
         
         # Save parameters
         self.image_size = image_size
