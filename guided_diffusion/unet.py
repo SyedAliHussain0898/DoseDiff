@@ -1480,6 +1480,7 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         h = self.middle_block(h, emb)
         if fused_cond.shape[2:] != h.shape[2:]:
             fused_cond = F.interpolate(fused_cond, size=h.shape[2:], mode='bilinear', align_corners=False)
+        print(h + fused_cond)
         h = h + fused_cond
         
         # Process through stage-specific decoders
