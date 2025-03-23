@@ -1480,7 +1480,13 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         h = self.middle_block(h, emb)
         if fused_cond.shape[2:] != h.shape[2:]:
             fused_cond = F.interpolate(fused_cond, size=h.shape[2:], mode='bilinear', align_corners=False)
-        print(h + fused_cond)
+        
+    
+    # Ensure channel dimensions of fused_cond match h
+        if fused_cond.shape[1] != h.shape[1]:
+        # Use a 1x1 convolution to project fused_cond to the correct number of channels
+            projection = nn.Conv2d(fused_cond.shape[1], h.shape[1], kernel_size=1).to(h.device)
+            fused_cond = projection(fused_cond)
         h = h + fused_cond
         
         # Process through stage-specific decoders
