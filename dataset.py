@@ -9,7 +9,7 @@ class Dataset_PSDM_train(Dataset):
     def __init__(self, data_root='data'):
         self.file_dir_list = []
         self.file_name_list = []
-        self.file_dir_list = self.file_dir_list + [data_root] * len(os.listdir(os.path.join(data_root, 'ct')))
+        self.file_dir_list = self.file_dir_list +'/content/DoseDiff' + [data_root] * len(os.listdir(os.path.join(data_root, 'ct')))
         self.file_name_list.extend(os.listdir(os.path.join(data_root, 'ct')))
 
         self.transforms = Compose([
