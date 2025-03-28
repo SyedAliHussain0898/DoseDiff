@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import argparse
 import shutil
-from guided_diffusion.unet import UNetModel_MS_Former
+from guided_diffusion.unet import UNetModel_MS_Former_MultiStage  # Changed import
 from guided_diffusion import gaussian_diffusion as gd
 from guided_diffusion.respace import SpacedDiffusion, space_timesteps
 from guided_diffusion.resample import create_named_schedule_sampler
@@ -50,15 +50,33 @@ print('train_lenth: %i   val_lenth: %i' % (train_data.len, val_data.len))
 
 dis_channels = 20
 
-model = UNetModel_MS_Former(image_size=img_size, in_channels=1, ct_channels=1, dis_channels=dis_channels,
-                       model_channels=128, out_channels=1, num_res_blocks=2, attention_resolutions=(16, 32),
-                       dropout=0,
-                       channel_mult=(1, 1, 2, 3, 4), conv_resample=True, dims=2, num_classes=None,
-                       use_checkpoint=False,
-                       use_fp16=False, num_heads=4, num_head_channels=-1, num_heads_upsample=-1,
-                       use_scale_shift_norm=True,
-                       resblock_updown=False, use_new_attention_order=False)
+# Only changed this model initialization part
+model = UNetModel_MS_Former_MultiStage(
+    image_size=img_size,
+    in_channels=1,
+    ct_channels=1,
+    dis_channels=dis_channels,
+    model_channels=128,
+    out_channels=1,
+    num_res_blocks=2,
+    attention_resolutions=(16, 32),
+    dropout=0,
+    channel_mult=(1, 1, 2, 3, 4),
+    conv_resample=True,
+    dims=2,
+    num_classes=None,
+    use_checkpoint=False,
+    use_fp16=False,
+    num_heads=4,
+    num_head_channels=-1,
+    num_heads_upsample=-1,
+    use_scale_shift_norm=True,
+    resblock_updown=False,
+    use_new_attention_order=False,
+    num_stages=3  # Added this new parameter only
+)
 
+# Rest of the code remains EXACTLY the same
 diffusion = SpacedDiffusion(use_timesteps=space_timesteps(args.T, [args.T]),
                             betas=gd.get_named_beta_schedule("linear", args.T),
                             model_mean_type=(gd.ModelMeanType.EPSILON),
@@ -87,7 +105,21 @@ for epoch in range(all_epochs):
 
         optimizer.zero_grad()
         t, weights = schedule_sampler.sample(rtdose.shape[0], rtdose.device)
-        losses = diffusion.training_losses(model=model, x_start=rtdose, t=t, model_kwargs={'ct': ct, 'dis': dis}, noise=None)
+        
+        # Only change needed in training loop - add stage_indices
+        stage_indices = model.get_stage_from_timestep(t, args.T)
+        losses = diffusion.training_losses(
+            model=model, 
+            x_start=rtdose, 
+            t=t, 
+            model_kwargs={
+                'ct': ct, 
+                'dis': dis,
+                'stage_indices': stage_indices  # Added this
+            }, 
+            noise=None
+        )
+        
         loss = (losses["loss"] * weights).mean()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -112,9 +144,24 @@ for epoch in range(all_epochs):
             for i, (ct, dis, rtdose) in enumerate(val_dataloader):
                 ct, dis, rtdose = ct.to(device).float(), dis.to(device).float(), rtdose.to(device).float()
 
+                # Only change needed in validation - use last stage for best quality
+                stage_indices = torch.full((ct.size(0),), 2, device=device, dtype=torch.long)
                 pred = diffusion_test.ddim_sample_loop(
-                    model=model, shape=(ct.size(0), 1, img_size[0], img_size[1]), noise=None, clip_denoised=True,
-                    denoised_fn=None, cond_fn=None, model_kwargs={'ct': ct, 'dis': dis}, device=None, progress=False, eta=0.0)
+                    model=model, 
+                    shape=(ct.size(0), 1, img_size[0], img_size[1]), 
+                    noise=None, 
+                    clip_denoised=True,
+                    denoised_fn=None, 
+                    cond_fn=None, 
+                    model_kwargs={
+                        'ct': ct, 
+                        'dis': dis,
+                        'stage_indices': stage_indices  # Added this
+                    }, 
+                    device=None, 
+                    progress=False, 
+                    eta=0.0
+                )
 
                 rtdose = (rtdose + 1) * 40
                 pred = (pred + 1) * 40
