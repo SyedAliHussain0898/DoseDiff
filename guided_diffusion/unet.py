@@ -18,8 +18,19 @@ from .nn import (
 
 from .vit import ViT_fusion
 
-# The rest of the UNet components (ResBlock, AttentionBlock, TimestepEmbedSequential, etc.) should be here
-# Assuming they're included above this section or imported correctly.
+class TimestepBlock(nn.Module):
+    @abstractmethod
+    def forward(self, x, emb):
+        pass
+
+class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
+    def forward(self, x, emb):
+        for layer in self:
+            if isinstance(layer, TimestepBlock):
+                x = layer(x, emb)
+            else:
+                x = layer(x)
+        return x
 
 class UNetModel_MS_Former_MultiStage(nn.Module):
     def __init__(
@@ -119,7 +130,6 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
             dim_head=64
         )
 
-        # FIXED VERSION of multi-stage decoder
         self.output_blocks = nn.ModuleList()
         self.stage_outputs = nn.ModuleList()
 
