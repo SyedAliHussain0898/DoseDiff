@@ -188,11 +188,11 @@ for epoch in range(all_epochs):
         train_writer.add_image('pred_rtdose', pred_rtdose, epoch + 1)
 
         torch.save(model.state_dict(),
-                   os.path.join('trained_model', save_name, 'model_epoch' + str(epoch + 1) + '.pth'))
+                   os.path.join('trained_models', save_name, 'model_epoch' + str(epoch + 1) + '.pth'))
         if val_epoch_MAE < best_MAE:
             best_MAE = val_epoch_MAE
             torch.save(model.state_dict(),
-                       os.path.join('trained_model', save_name, 'model_best_mae.pth'))
+                       os.path.join('trained_models', save_name, 'model_best_mae.pth'))
 
 train_writer.close()
 print('saved_model_name:', save_name)
