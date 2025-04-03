@@ -6,6 +6,10 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
+# ------------------------------------------------------------------------------------
+# The imports below are part of the existing code base ("nn.py", "vit.py", etc.).
+# They remain unchanged.
+# ------------------------------------------------------------------------------------
 from .nn import (
     checkpoint,
     conv_nd,
@@ -21,6 +25,7 @@ from .vit import ViT_fusion
 
 ########################################
 ## Original Classes from Unet Old Full ##
+## (Unchanged, except for additional comments)
 ########################################
 
 class TimestepBlock(nn.Module):
@@ -236,9 +241,10 @@ class QKVAttention(nn.Module):
         return a.reshape(bs, -1, length)
 
 
-###############################################
-## Insert your multi-stage diffusion fix here ##
-###############################################
+#####################################################
+## NEW/EDITED SECTION: Multi-stage diffusion "fix" ##
+## UNetModel_MS_Former_MultiStage class            ##
+#####################################################
 
 class UNetModel_MS_Former_MultiStage(nn.Module):
     """
@@ -247,6 +253,8 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
     - Stage-specific decoders
     - Multi-modal fusion (CT + distance maps)
     - Consistent channel dimensions
+
+    NOTE: This class is newly added/edited in the codebase.
     """
     def __init__(
         self,
@@ -276,6 +284,9 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
     ):
         super().__init__()
 
+        # -----------------------------
+        # Original / unchanged logic
+        # -----------------------------
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
 
@@ -298,13 +309,18 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         self.num_heads_upsample = num_heads_upsample
         self.num_stages = num_stages
 
-        # Determine custom stage channel counts
+        # -----------------------------
+        # NEW: stage_channels setting
+        # -----------------------------
         if stage_channels is None:
+            # If no stage-specific channels given, create a default distribution
             self.stage_channels = [max(model_channels, model_channels // (i + 1)) for i in range(num_stages)]
         else:
             self.stage_channels = stage_channels
 
-        # Time embedding
+        # -----------------------------
+        # Time embedding (unchanged)
+        # -----------------------------
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
             linear(model_channels, time_embed_dim),
@@ -315,7 +331,9 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         if self.num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
 
-        # Shared encoder input
+        # ------------------------------------------------
+        # SHARED ENCODER INPUT BLOCKS for x, CT, and DIS
+        # ------------------------------------------------
         ch = input_ch = int(channel_mult[0] * model_channels)
         self.input_blocks = nn.ModuleList([
             TimestepEmbedSequential(conv_nd(dims, in_channels, ch, 3, padding=1))
@@ -329,7 +347,10 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
 
         input_block_chans = [ch]
         ds = 1
+
+        # -----------------------------
         # Build shared encoder
+        # -----------------------------
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
@@ -366,6 +387,8 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
                     )
                 ]
                 ch = int(mult * model_channels)
+
+                # If attention is needed at this resolution
                 if ds in attention_resolutions:
                     layers.append(
                         AttentionBlock(
@@ -394,11 +417,13 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
                             use_new_attention_order=use_new_attention_order,
                         )
                     )
+
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 self.input_blocks_CT.append(TimestepEmbedSequential(*layers_CT))
                 self.input_blocks_DIS.append(TimestepEmbedSequential(*layers_DIS))
                 input_block_chans.append(ch)
-                # downsample if not last level
+
+            # Downsample at the end of each level (except the last)
             if level != len(channel_mult) - 1:
                 out_ch = ch
                 downsample_layer = (
@@ -411,7 +436,9 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
                         use_checkpoint=use_checkpoint,
                         use_scale_shift_norm=use_scale_shift_norm,
                         down=True,
-                    ) if resblock_updown else Downsample(
+                    )
+                    if resblock_updown
+                    else Downsample(
                         ch, conv_resample, dims=dims, out_channels=out_ch
                     )
                 )
@@ -422,7 +449,9 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
                 input_block_chans.append(ch)
                 ds *= 2
 
-        # Middle block
+        # -----------------------------------
+        # Middle block (shared bottleneck)
+        # -----------------------------------
         self.middle_block = TimestepEmbedSequential(
             ResBlock(
                 ch,
@@ -449,15 +478,17 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
             ),
         )
 
-        # Fusion module
+        # -------------------
+        # Fusion module (ViT)
+        # -------------------
         self.fusion = ViT_fusion(
             image_size=(
                 image_size[0] // (2 ** (len(channel_mult) - 1)),
                 image_size[1] // (2 ** (len(channel_mult) - 1))
             ),
             patch_size=(
-                image_size[0] // (2 ** (len(channel_mult))),
-                image_size[1] // (2 ** (len(channel_mult)))
+                image_size[0] // (2 ** len(channel_mult)),
+                image_size[1] // (2 ** len(channel_mult))
             ),
             dim=1024,
             heads=1,
@@ -466,17 +497,20 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
             dim_head=64
         )
 
-        # Stage-specific decoders
+        # ---------------------------------------
+        # Stage-specific DECODERS (multi-stage)
+        # ---------------------------------------
         self.output_blocks = nn.ModuleList()
         self.stage_outputs = nn.ModuleList()
 
         for stage in range(num_stages):
-            stage_ch = self.stage_channels[stage]
+            stage_ch = self.stage_channels[stage]  # how many channels for this stage
             stage_output_blocks = nn.ModuleList()
-            stage_input_block_chans = input_block_chans.copy()
+            stage_input_block_chans = input_block_chans.copy()  # local copy
             stage_ds = 2 ** (len(channel_mult) - 1)
             stage_ch_tracker = ch
 
+            # We build the decoder layers in reverse order
             for level, mult in list(enumerate(channel_mult))[::-1]:
                 for i in range(num_res_blocks + 1):
                     ich = stage_input_block_chans.pop()
@@ -493,6 +527,7 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
                     ]
                     stage_ch_tracker = int(stage_ch * mult)
 
+                    # Optional attention in up block
                     if stage_ds in attention_resolutions:
                         layers.append(
                             AttentionBlock(
@@ -504,7 +539,7 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
                             )
                         )
 
-                    # If we are at the end of this level, do an upsample if needed
+                    # Upsample after finishing this level
                     if level and i == num_res_blocks:
                         out_ch = stage_ch_tracker
                         layers.append(
@@ -517,7 +552,9 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
                                 use_checkpoint=use_checkpoint,
                                 use_scale_shift_norm=use_scale_shift_norm,
                                 up=True,
-                            ) if resblock_updown else Upsample(
+                            )
+                            if resblock_updown
+                            else Upsample(
                                 stage_ch_tracker, conv_resample, dims=dims, out_channels=out_ch
                             )
                         )
@@ -534,29 +571,39 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
                 )
             )
 
+    # ---------------------------------------------------------
+    # FORWARD: Multi-modal inputs (x, ct, dis) + multi-stages
+    # ---------------------------------------------------------
     def forward(self, x, timesteps, ct, dis, y=None, stage_indices=None):
         """
         Apply the model to an input batch with multi-modal inputs.
-        :param x: Input image [N x C x H x W]
-        :param timesteps: Diffusion timesteps [N]
-        :param ct: CT scan input [N x CT_C x H x W]
-        :param dis: Distance map input [N x DIS_C x H x W]
-        :param y: Optional class labels [N]
-        :param stage_indices: Optional stage indices [N]
-        :return: Output tensor [N x C x H x W]
+        
+        :param x:         [N x C x H x W] input image
+        :param timesteps: [N] Diffusion timesteps
+        :param ct:        [N x CT_C x H x W] CT scan input
+        :param dis:       [N x DIS_C x H x W] distance map input
+        :param y:         [N] Optional class labels
+        :param stage_indices: [N] Optional stage indices (overrides auto-calculated)
+        :return:          [N x C x H x W] output tensor
         """
-        assert (y is not None) == (self.num_classes is not None), "must specify y if and only if the model is class-conditional"
+        # -- Class-conditional check (unchanged) --
+        assert (y is not None) == (self.num_classes is not None), \
+            "must specify y if and only if the model is class-conditional"
 
+        # -- Stage indices: if not provided, derive from timesteps --
         if stage_indices is None:
             stage_indices = self.get_stage_from_timestep(timesteps)
 
-        hs = []
+        # -- Time embedding (unchanged) --
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         if self.num_classes is not None:
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
 
-        # Shared encoder
+        # -------------------------
+        # SHARED ENCODER FOR X/CT/DIS
+        # -------------------------
+        hs = []
         h = x.type(self.dtype)
         ct_h = ct.type(self.dtype)
         dis_h = dis.type(self.dtype)
@@ -564,33 +611,51 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         for i, module in enumerate(self.input_blocks):
             ct_h = self.input_blocks_CT[i](ct_h, emb)
             dis_h = self.input_blocks_DIS[i](dis_h, emb)
-            h = module(h, emb) + ct_h + dis_h  # Basic fusion
+            # Basic fusion at each stage of the encoder
+            h = module(h, emb) + ct_h + dis_h
             hs.append(h)
 
-        # Middle block
+        # -----------------
+        # Middle (bottleneck)
+        # -----------------
         h = self.middle_block(h, emb)
 
-        # Additional fusion at bottleneck
+        # -----------------------------------
+        # Additional fusion at the bottleneck
+        # -----------------------------------
         h = self.fusion(ct_h, dis_h, h) + h
 
-        # Stage-specific decoders
+        # ---------------------------------
+        # STAGE-SPECIFIC DECODER STEPS
+        # ---------------------------------
         outputs = []
         for i, stage_idx in enumerate(stage_indices):
             stage_decoder = self.output_blocks[stage_idx]
             stage_out = self.stage_outputs[stage_idx]
 
+            # Pick the single batch item for this stage
             sample_h = h[i : i + 1]
             sample_hs = [h_i[i : i + 1] for h_i in hs]
 
+            # Decoder steps (reverse pass)
             for module in stage_decoder:
                 sample_h = th.cat([sample_h, sample_hs.pop()], dim=1)
                 sample_h = module(sample_h, emb[i : i + 1])
 
+            # Final output layer for the stage
             outputs.append(stage_out(sample_h))
 
+        # We concatenate each stage output in the batch dimension
         return torch.cat(outputs, dim=0)
 
+    # ----------------------------------------------------------------
+    # NEW: get_stage_from_timestep -> maps time t to a stage index
+    # ----------------------------------------------------------------
     def get_stage_from_timestep(self, timesteps, num_timesteps=1000):
+        """
+        Map timesteps [0..num_timesteps-1] to a stage index [0..num_stages-1].
+        By default, divides the total timesteps evenly among the stages.
+        """
         normalized_t = timesteps.float() / (num_timesteps - 1)
         stage_indices = (normalized_t * (self.num_stages - 1)).round().long()
         return stage_indices.clamp(0, self.num_stages - 1)
