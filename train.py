@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--bs', type=int, default=32, help='batch size')
 parser.add_argument('--T', type=int, default=1000, help='T')
 parser.add_argument('--epoch', type=int, default=100, help='all_epochs')
+parser.add_argument('--checkpoint_path', type=str, default=None, help='Path to checkpoint to resume from')
 args = parser.parse_args()
 
 device = torch.device("cuda")
@@ -50,7 +51,7 @@ print('train_lenth: %i   val_lenth: %i' % (train_data.len, val_data.len))
 
 dis_channels = 20
 
-# Only changed this model initialization part
+# Model initialization
 model = UNetModel_MS_Former_MultiStage(
     image_size=img_size,
     in_channels=1,
@@ -76,27 +77,54 @@ model = UNetModel_MS_Former_MultiStage(
     num_stages=3  # Added this new parameter only
 )
 
-# Rest of the code remains EXACTLY the same
-diffusion = SpacedDiffusion(use_timesteps=space_timesteps(args.T, [args.T]),
-                            betas=gd.get_named_beta_schedule("linear", args.T),
-                            model_mean_type=(gd.ModelMeanType.EPSILON),
-                            model_var_type=(gd.ModelVarType.FIXED_LARGE),
-                            loss_type=gd.LossType.MSE, rescale_timesteps=False)
+diffusion = SpacedDiffusion(
+    use_timesteps=space_timesteps(args.T, [args.T]),
+    betas=gd.get_named_beta_schedule("linear", args.T),
+    model_mean_type=(gd.ModelMeanType.EPSILON),
+    model_var_type=(gd.ModelVarType.FIXED_LARGE),
+    loss_type=gd.LossType.MSE,
+    rescale_timesteps=False
+)
 
-diffusion_test = SpacedDiffusion(use_timesteps=space_timesteps(args.T, 'ddim4'),
-                                betas=gd.get_named_beta_schedule("linear", args.T),
-                                model_mean_type=(gd.ModelMeanType.EPSILON),
-                                model_var_type=(gd.ModelVarType.FIXED_LARGE),
-                                loss_type=gd.LossType.MSE, rescale_timesteps=False)
+diffusion_test = SpacedDiffusion(
+    use_timesteps=space_timesteps(args.T, 'ddim4'),
+    betas=gd.get_named_beta_schedule("linear", args.T),
+    model_mean_type=(gd.ModelMeanType.EPSILON),
+    model_var_type=(gd.ModelVarType.FIXED_LARGE),
+    loss_type=gd.LossType.MSE,
+    rescale_timesteps=False
+)
 
 model.to(device)
 
 schedule_sampler = create_named_schedule_sampler("uniform", diffusion)
 optimizer = optim.AdamW(model.parameters(), lr=lr_max, weight_decay=L2)
 lr_scheduler = MultiStepLR(optimizer, milestones=[int((7 / 10) * args.epoch)], gamma=0.1, last_epoch=-1)
-best_MAE = 1000
 
-for epoch in range(all_epochs):
+best_MAE = 1000
+epoch_start = 0  # default start
+
+# -------------------------- NEW CHECKPOINT LOADING CODE --------------------------
+if args.checkpoint_path and os.path.isfile(args.checkpoint_path):
+    print(f"Loading checkpoint from {args.checkpoint_path}")
+    ckpt = torch.load(args.checkpoint_path, map_location=device)
+    # Load model state
+    if 'model_state_dict' in ckpt:
+        model.load_state_dict(ckpt['model_state_dict'])
+    else:
+        model.load_state_dict(ckpt)
+    
+    # Load optimizer and epoch if available
+    if 'optimizer_state_dict' in ckpt:
+        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+    if 'epoch' in ckpt:
+        epoch_start = ckpt['epoch']
+    if 'best_MAE' in ckpt:
+        best_MAE = ckpt['best_MAE']
+    print(f"Resumed from epoch {epoch_start} with best MAE={best_MAE:.4f}")
+# -------------------------------------------------------------------------------
+
+for epoch in range(epoch_start, all_epochs):
     lr = optimizer.param_groups[0]['lr']
     model.train()
     train_epoch_loss = []
@@ -115,7 +143,7 @@ for epoch in range(all_epochs):
             model_kwargs={
                 'ct': ct, 
                 'dis': dis,
-                'stage_indices': stage_indices  # Added this
+                'stage_indices': stage_indices  # The only major difference from original
             }, 
             noise=None
         )
@@ -156,7 +184,7 @@ for epoch in range(all_epochs):
                     model_kwargs={
                         'ct': ct, 
                         'dis': dis,
-                        'stage_indices': stage_indices  # Added this
+                        'stage_indices': stage_indices
                     }, 
                     device=None, 
                     progress=False, 
@@ -187,12 +215,23 @@ for epoch in range(all_epochs):
         pred_rtdose = make_grid(pred_rtdose, 2, normalize=True)
         train_writer.add_image('pred_rtdose', pred_rtdose, epoch + 1)
 
+        # Keep old saving lines the same:
         torch.save(model.state_dict(),
                    os.path.join('trained_models', save_name, 'model_epoch' + str(epoch + 1) + '.pth'))
         if val_epoch_MAE < best_MAE:
             best_MAE = val_epoch_MAE
             torch.save(model.state_dict(),
                        os.path.join('trained_models', save_name, 'model_best_mae.pth'))
+
+        # ---------------- NEW CODE: SAVE A FULL CHECKPOINT WITH EPOCH & OPTIMIZER ----------------
+        ckpt_dict = {
+            'epoch': epoch + 1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'best_MAE': best_MAE
+        }
+        torch.save(ckpt_dict, os.path.join('trained_models', save_name, f'checkpoint_epoch{epoch + 1}.pth'))
+        # -------------------------------------------------------------------------------
 
 train_writer.close()
 print('saved_model_name:', save_name)
