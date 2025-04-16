@@ -133,8 +133,6 @@ for epoch in range(epoch_start, all_epochs):
         optimizer.zero_grad()
         t, weights = schedule_sampler.sample(rtdose.shape[0], rtdose.device)
         
-        # Only change needed in training loop - add stage_indices
-        stage_indices = model.get_stage_from_timestep(t, args.T)
         losses = diffusion.training_losses(
             model=model, 
             x_start=rtdose, 
@@ -142,7 +140,6 @@ for epoch in range(epoch_start, all_epochs):
             model_kwargs={
                 'ct': ct, 
                 'dis': dis,
-                'stage_indices': stage_indices  # The only major difference from original
             }, 
             noise=None
         )
@@ -171,8 +168,6 @@ for epoch in range(epoch_start, all_epochs):
             for i, (ct, dis, rtdose) in enumerate(val_dataloader):
                 ct, dis, rtdose = ct.to(device).float(), dis.to(device).float(), rtdose.to(device).float()
 
-                # Only change needed in validation - use last stage for best quality
-                stage_indices = torch.full((ct.size(0),), 2, device=device, dtype=torch.long)
                 pred = diffusion_test.ddim_sample_loop(
                     model=model, 
                     shape=(ct.size(0), 1, img_size[0], img_size[1]), 
@@ -183,7 +178,6 @@ for epoch in range(epoch_start, all_epochs):
                     model_kwargs={
                         'ct': ct, 
                         'dis': dis,
-                        'stage_indices': stage_indices
                     }, 
                     device=None, 
                     progress=False, 
