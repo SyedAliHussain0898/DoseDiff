@@ -1,8 +1,7 @@
 import numpy as np
 import torch as th
 
-from .gaussian_diffusion import GaussianDiffusion, ModelMeanType, ModelVarType, LossType
-
+from .gaussian_diffusion import GaussianDiffusion
 
 
 def space_timesteps(num_timesteps, section_counts):
@@ -112,113 +111,6 @@ class SpacedDiffusion(GaussianDiffusion):
     def _scale_timesteps(self, t):
         # Scaling is done by the wrapped model.
         return t
-
-class MultiStageSpacedDiffusion(SpacedDiffusion):
-    """
-    A diffusion process that operates on multiple stages with different decoders.
-    """
-    def __init__(
-        self,
-        use_timesteps,
-        betas,
-        model_mean_type,
-        model_var_type,
-        loss_type,
-        rescale_timesteps=False,
-        num_stages=3,
-        stage_distribution="linear",
-    ):
-        super().__init__(
-            use_timesteps=use_timesteps,
-            betas=betas,
-            model_mean_type=model_mean_type,
-            model_var_type=model_var_type,
-            loss_type=loss_type,
-            rescale_timesteps=rescale_timesteps,
-        )
-        
-        # Define stage boundaries based on timesteps
-        self.num_stages = num_stages
-        
-        if stage_distribution == "linear":
-            # Divide timesteps evenly across stages
-            self.stage_boundaries = []
-            step_size = len(self.timestep_map) // num_stages
-            for i in range(num_stages - 1):
-                self.stage_boundaries.append((i + 1) * step_size)
-            self.stage_boundaries.append(len(self.timestep_map))
-        elif stage_distribution == "geometric":
-            # Allocate more timesteps to early stages (higher noise levels)
-            self.stage_boundaries = []
-            remaining = len(self.timestep_map)
-            ratio = 0.6  # Each subsequent stage gets 60% of remaining timesteps
-            current = 0
-            for i in range(num_stages - 1):
-                stage_size = int(remaining * ratio)
-                current += stage_size
-                self.stage_boundaries.append(current)
-                remaining -= stage_size
-            self.stage_boundaries.append(len(self.timestep_map))
-        
-        # Create mapping from timestep to stage
-        self.timestep_to_stage = {}
-        prev_boundary = 0
-        for i, boundary in enumerate(self.stage_boundaries):
-            for t in range(prev_boundary, boundary):
-                self.timestep_to_stage[t] = i
-            prev_boundary = boundary
-    
-    def get_stage(self, t_idx):
-        """
-        Get the stage for the given timestep indices.
-        """
-        if isinstance(t_idx, th.Tensor):
-            t_idx = t_idx.cpu().numpy()
-        
-        if isinstance(t_idx, (int, np.int64)):
-            return self.timestep_to_stage[t_idx]
-        else:
-            return np.array([self.timestep_to_stage[idx] for idx in t_idx])
-    
-    def p_mean_variance(self, model, x, t, clip_denoised=True, denoised_fn=None, model_kwargs=None):
-        """
-        Apply the model to get p(x_{t-1} | x_t) with stage information.
-        """
-        if model_kwargs is None:
-            model_kwargs = {}
-            
-        # Convert timesteps to indices in the diffusion timesteps
-        t_idx = [(self.timestep_map == t_i).nonzero()[0][0].item() for t_i in t.cpu().numpy()]
-        
-        # Get the stage for each timestep
-        stages = self.get_stage(t_idx)
-        stages = th.tensor(stages, device=t.device, dtype=th.long)
-        
-        # Add stage information to model_kwargs
-        model_kwargs["stages"] = stages
-        
-        # Call the original method with modified model_kwargs
-        return super().p_mean_variance(model, x, t, clip_denoised, denoised_fn, model_kwargs)
-    
-    def training_losses(self, model, x_start, t, model_kwargs=None, noise=None):
-        """
-        Compute training losses with stage information.
-        """
-        if model_kwargs is None:
-            model_kwargs = {}
-            
-        # Convert timesteps to indices in the diffusion timesteps
-        t_idx = [(self.timestep_map == t_i).nonzero()[0][0].item() for t_i in t.cpu().numpy()]
-        
-        # Get the stage for each timestep
-        stages = self.get_stage(t_idx)
-        stages = th.tensor(stages, device=t.device, dtype=th.long)
-        
-        # Add stage information to model_kwargs
-        model_kwargs["stages"] = stages
-        
-        # Call the original method with modified model_kwargs
-        return super().training_losses(model, x_start, t, model_kwargs, noise)
 
 
 class _WrappedModel:
