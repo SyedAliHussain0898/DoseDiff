@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import argparse
 import shutil
-from guided_diffusion.unet import UNetModel_MS_Former_MultiStage  # Changed import
+from guided_diffusion.unet import UNetModel_MS_Former  # Changed import
 from guided_diffusion import gaussian_diffusion as gd
 from guided_diffusion.respace import SpacedDiffusion, space_timesteps
 from guided_diffusion.resample import create_named_schedule_sampler
@@ -74,7 +74,6 @@ model = UNetModel_MS_Former_MultiStage(
     use_scale_shift_norm=True,
     resblock_updown=False,
     use_new_attention_order=False,
-    num_stages=3  # Added this new parameter only
 )
 
 diffusion = SpacedDiffusion(
