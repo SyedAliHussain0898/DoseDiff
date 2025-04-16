@@ -52,7 +52,7 @@ print('train_lenth: %i   val_lenth: %i' % (train_data.len, val_data.len))
 dis_channels = 20
 
 # Model initialization
-model = UNetModel_MS_Former_MultiStage(
+model = UNetModel_MS_Former(
     image_size=img_size,
     in_channels=1,
     ct_channels=1,
