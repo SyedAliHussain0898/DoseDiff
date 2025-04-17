@@ -21,6 +21,7 @@ from .nn import (
 )
 
 from .vit import ViT_fusion
+from .lora import LoRALinear
 
 
 ########################################
@@ -122,9 +123,10 @@ class ResBlock(TimestepBlock):
 
         self.emb_layers = nn.Sequential(
             nn.SiLU(),
-            linear(
+            LoRALinear( #modified
                 emb_channels,
                 2 * self.out_channels if use_scale_shift_norm else self.out_channels,
+                lora_rank=8  # New argument
             ),
         )
         self.out_layers = nn.Sequential(
