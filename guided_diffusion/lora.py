@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.functional as F
 import math
 
 class LoRALayer(nn.Module):  # Changed to nn.Module
@@ -28,7 +29,7 @@ class LoRALinear(nn.Linear):
         lora_B = self.lora.lora_B.to(x.device)
         
         # Original projection
-        result = nn.Linear(x, self.weight, self.bias)
+        result = F.linear(x, self.weight, self.bias)
         
         # LoRA projection
         lora_effect = (x @ lora_A.T @ lora_B.T) * (self.lora.alpha / self.lora.rank)
