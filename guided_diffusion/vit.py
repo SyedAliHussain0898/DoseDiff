@@ -3,6 +3,7 @@ from torch import nn
 
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
+from .lora import LoRALinear
 
 
 # helpers
@@ -50,9 +51,9 @@ class Attention(nn.Module):
         self.attend = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
 
-        self.to_q = nn.Linear(dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(dim, inner_dim, bias=False)
+        self.to_q = nn.LoRALinear(dim, inner_dim, bias=False)
+        self.to_k = nn.LoRALinear(dim, inner_dim, bias=False)
+        self.to_v = nn.LoRALinear(dim, inner_dim, bias=False)
 
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),
@@ -107,19 +108,19 @@ class ViT_fusion(nn.Module):
         self.to_patch_embedding_q = nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=self.patch_height, p2=self.patch_width),
             nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim),
+            LoRALinear(patch_dim, dim, lora_rank=8),  # Modified line
             nn.LayerNorm(dim),
         )
         self.to_patch_embedding_k = nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=self.patch_height, p2=self.patch_width),
             nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim),
+            LoRALinear(patch_dim, dim, lora_rank=8),  # Modified line
             nn.LayerNorm(dim),
         )
         self.to_patch_embedding_v = nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=self.patch_height, p2=self.patch_width),
             nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim),
+            LoRALinear(patch_dim, dim, lora_rank=8),  # Modified line
             nn.LayerNorm(dim),
         )
 
