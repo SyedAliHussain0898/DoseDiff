@@ -2,42 +2,35 @@ import torch
 import torch.nn as nn
 import math
 
-class LoRALayer:
-    def __init__(
-        self, 
-        in_features: int, 
-        out_features: int,
-        rank: int = 8,
-        alpha: float = 16.0
-    ):
+class LoRALayer(nn.Module):  # Changed to nn.Module
+    def __init__(self, in_features, out_features, rank=8, alpha=16.0):
+        super().__init__()
         self.rank = rank
         self.alpha = alpha
         
-        # Actual trainable parameters
-        self.lora_A = nn.Parameter(torch.empty((rank, in_features)))
-        self.lora_B = nn.Parameter(torch.empty((out_features, rank)))
-        
+        # Register as Parameters
+        self.lora_A = nn.Parameter(torch.empty(rank, in_features))
+        self.lora_B = nn.Parameter(torch.empty(out_features, rank))
         self.reset_parameters()
         
     def reset_parameters(self):
         nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
         nn.init.zeros_(self.lora_B)
 
-    def merge_weights(self, base_weight):
-        return base_weight + (self.alpha / self.rank) * self.lora_B @ self.lora_A
-
 class LoRALinear(nn.Linear):
     def __init__(self, in_features, out_features, lora_rank=8, **kwargs):
         super().__init__(in_features, out_features, **kwargs)
-        self.lora = LoRALayer(
-            in_features=in_features,
-            out_features=out_features,
-            rank=lora_rank
-        )
-    
+        self.lora = LoRALayer(in_features, out_features, lora_rank)
+        
     def forward(self, x):
-        orig_type = x.dtype
-        x = x.float()
-        result = super().forward(x)
-        lora_effect = (x @ self.lora.lora_A.T @ self.lora.lora_B.T) * (self.lora.alpha / self.lora.rank)
-        return (result + lora_effect).to(orig_type)
+        # Ensure LoRA params are on same device as input
+        lora_A = self.lora.lora_A.to(x.device)
+        lora_B = self.lora.lora_B.to(x.device)
+        
+        # Original projection
+        result = F.linear(x, self.weight, self.bias)
+        
+        # LoRA projection
+        lora_effect = (x @ lora_A.T @ lora_B.T) * (self.lora.alpha / self.lora.rank)
+        
+        return result + lora_effect
