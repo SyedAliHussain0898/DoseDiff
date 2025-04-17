@@ -97,6 +97,10 @@ diffusion_test = SpacedDiffusion(
 
 model.to(device)
 
+for name, param in model.named_parameters():
+    if "lora_" in name:
+        param.data = param.data.to(device)
+
 schedule_sampler = create_named_schedule_sampler("uniform", diffusion)
 optimizer = optim.AdamW(model.parameters(), lr=lr_max, weight_decay=L2)
 lr_scheduler = MultiStepLR(optimizer, milestones=[int((7 / 10) * args.epoch)], gamma=0.1, last_epoch=-1)
