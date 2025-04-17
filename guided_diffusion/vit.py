@@ -51,9 +51,9 @@ class Attention(nn.Module):
         self.attend = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
 
-        self.to_q = nn.LoRALinear(dim, inner_dim, bias=False)
-        self.to_k = nn.LoRALinear(dim, inner_dim, bias=False)
-        self.to_v = nn.LoRALinear(dim, inner_dim, bias=False)
+        self.to_q = LoRALinear(dim, inner_dim, bias=False) # Modified
+        self.to_k = LoRALinear(dim, inner_dim, bias=False) # Modified
+        self.to_v = LoRALinear(dim, inner_dim, bias=False) # Modified
 
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),
