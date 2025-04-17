@@ -27,22 +27,17 @@ class LoRALayer:
         return base_weight + (self.alpha / self.rank) * self.lora_B @ self.lora_A
 
 class LoRALinear(nn.Linear):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, in_features, out_features, lora_rank=8, **kwargs):
+        super().__init__(in_features, out_features, **kwargs)
         self.lora = LoRALayer(
-            self.in_features, 
-            self.out_features,
-            kwargs.get('lora_rank', 8)
+            in_features=in_features,
+            out_features=out_features,
+            rank=lora_rank
         )
-        
-    def forward(self, x: torch.Tensor):
+    
+    def forward(self, x):
         orig_type = x.dtype
         x = x.float()
-        
-        # Original projection
-        result = F.linear(x, self.weight, self.bias)
-        
-        # LoRA projection
+        result = super().forward(x)
         lora_effect = (x @ self.lora.lora_A.T @ self.lora.lora_B.T) * (self.lora.alpha / self.lora.rank)
-        
         return (result + lora_effect).to(orig_type)
