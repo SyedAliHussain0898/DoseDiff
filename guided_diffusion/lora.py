@@ -28,7 +28,7 @@ class LoRALinear(nn.Linear):
         lora_B = self.lora.lora_B.to(x.device)
         
         # Original projection
-        result = F.linear(x, self.weight, self.bias)
+        result = nn.linear(x, self.weight, self.bias)
         
         # LoRA projection
         lora_effect = (x @ lora_A.T @ lora_B.T) * (self.lora.alpha / self.lora.rank)
