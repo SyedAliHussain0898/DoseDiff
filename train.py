@@ -67,7 +67,7 @@ model = UNetModel_MS_Former_MultiStage(
     dims=2,
     num_classes=None,
     use_checkpoint=False,
-    use_fp16=False,
+    use_fp16=True,
     num_heads=4,
     num_head_channels=-1,
     num_heads_upsample=-1,
@@ -127,6 +127,7 @@ if args.checkpoint_path and os.path.isfile(args.checkpoint_path):
         best_MAE = ckpt['best_MAE']
     print(f"Resumed from epoch {epoch_start} with best MAE={best_MAE:.4f}")
 # -------------------------------------------------------------------------------
+scaler = torch.cuda.amp.GradScaler()
 
 for epoch in range(epoch_start, all_epochs):
     lr = optimizer.param_groups[0]['lr']
@@ -140,17 +141,19 @@ for epoch in range(epoch_start, all_epochs):
         
         # Only change needed in training loop - add stage_indices
         stage_indices = model.get_stage_from_timestep(t, args.T)
-        losses = diffusion.training_losses(
-            model=model, 
-            x_start=rtdose, 
-            t=t, 
-            model_kwargs={
-                'ct': ct, 
-                'dis': dis,
-                'stage_indices': stage_indices  # The only major difference from original
-            }, 
-            noise=None
-        )
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+           loss = diffusion.training_losses(
+                model=model, 
+                x_start=rtdose, 
+                t=t, 
+                model_kwargs={
+                    'ct': ct, 
+                    'dis': dis,
+                    'stage_indices': stage_indices  # The only major difference from original
+                }, 
+                noise=None
+            )
+        scaler.scale(loss).backward()
         
         loss = (losses["loss"] * weights).mean()
         loss.backward()
