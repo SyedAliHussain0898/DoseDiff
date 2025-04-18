@@ -153,9 +153,10 @@ for epoch in range(epoch_start, all_epochs):
                 }, 
                 noise=None
             )
-        scaler.scale(loss).backward()
+        
         
         loss = (losses["loss"] * weights).mean()
+        scaler.scale(loss).backward()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
