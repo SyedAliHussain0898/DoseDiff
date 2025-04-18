@@ -142,7 +142,7 @@ for epoch in range(epoch_start, all_epochs):
         # Only change needed in training loop - add stage_indices
         stage_indices = model.get_stage_from_timestep(t, args.T)
         with torch.autocast(device_type='cuda', dtype=torch.float16):
-           loss = diffusion.training_losses(
+           losses = diffusion.training_losses(
                 model=model, 
                 x_start=rtdose, 
                 t=t, 
@@ -153,13 +153,13 @@ for epoch in range(epoch_start, all_epochs):
                 }, 
                 noise=None
             )
-        
-        
-        loss = (losses["loss"] * weights).mean()
+            loss = (losses["loss"] * weights).mean()
+            
         scaler.scale(loss).backward()
-        loss.backward()
+        scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
 
         train_epoch_loss.append(loss.item())
         print('[%d/%d, %d/%d] train_loss: %.3f' %
