@@ -153,7 +153,7 @@ for epoch in range(epoch_start, all_epochs):
                 }, 
                 noise=None
             )
-            loss = (losses["loss"] * weights).mean()
+        loss = (losses["loss"] * weights).mean()
             
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
