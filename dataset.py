@@ -57,8 +57,8 @@ class Dataset_PSDM_train(Dataset):
 
         data_all = self.transforms(image=data_all)['image']
 
-        ct = torch.from_numpy(data_all[:, :, 0:1]).permute(2, 0, 1).float().requires_grad_(True)
-        dose = torch.from_numpy(data_all[:, :, 1:2]).permute(2, 0, 1).float().requires_grad_(True)
+        ct = torch.from_numpy(data_all[:, :, 0:1]).permute(2, 0, 1)
+        dose = torch.from_numpy(data_all[:, :, 1:2]).permute(2, 0, 1)
         dis = torch.from_numpy(data_all[:, :, 2:]).permute(2, 0, 1)
         return ct, dis, dose
 
@@ -110,8 +110,8 @@ class Dataset_PSDM_val(Dataset):
                          PSDM_LeftParotid, PSDM_Mandible, PSDM_possible_dose_mask, PSDM_PTV56, PSDM_PTV63, PSDM_PTV70,
                          PSDM_RightParotid, PSDM_SpinalCord], axis=-1)
 
-        ct = torch.from_numpy(data_all[:, :, 0:1]).permute(2, 0, 1).float().requires_grad_(True)
-        dose = torch.from_numpy(data_all[:, :, 1:2]).permute(2, 0, 1).float().requires_grad_(True)
+        ct = torch.from_numpy(data_all[:, :, 0:1]).permute(2, 0, 1)
+        dose = torch.from_numpy(data_all[:, :, 1:2]).permute(2, 0, 1)
         dis = torch.from_numpy(data_all[:, :, 2:]).permute(2, 0, 1)
         return ct, dis, dose
 
