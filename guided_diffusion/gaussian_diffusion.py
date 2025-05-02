@@ -817,7 +817,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, x_start, t, model_kwargs=None, noise=None):
+    def training_losses(self, model, x_start, t, model_kwargs=None, noise=None, physics_loss_scale=0.01):
         """
         Compute training losses for a single timestep.
 
@@ -890,6 +890,27 @@ class GaussianDiffusion:
         else:
             raise NotImplementedError(self.loss_type)
 
+        terms = super().training_losses(model, x_start, t, model_kwargs, noise)
+    
+        # Physics-informed loss addition
+        with torch.enable_grad():
+            # Get predicted x0 (mean estimate)
+            x_t = self.q_sample(x_start, t, noise=noise)
+            pred_x0 = self._predict_xstart_from_eps(x_t, t, terms['pred_xstart'])
+            
+            # Calculate physics residual
+            residual = calculate_physics_residual(
+                pred_x0, 
+                model_kwargs['ct'],
+                model_kwargs['dis'],
+                body_mask=model_kwargs['dis'][:, 6:7]  # Example mask
+            )
+            
+            # Get variance schedule
+            alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape)
+            physics_loss = (residual ** 2) / (alpha_bar / physics_loss_scale)
+            
+        terms["loss"] = terms["loss"] + physics_loss.mean()
         return terms
 
     def _prior_bpd(self, x_start):
