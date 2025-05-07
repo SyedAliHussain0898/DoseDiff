@@ -621,5 +621,6 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
 
     def get_stage_from_timestep(self, timesteps, num_timesteps=1000):
         normalized_t = timesteps.float() / (num_timesteps - 1)
-        stage_indices = (normalized_t * (self.num_stages - 1)).round().long()
+        sstage_indices = (normalized_t * self.num_stages).floor().long()
+        stage_indices = stage_indices.clamp(0, self.num_stages - 1)
         return stage_indices.clamp(0, self.num_stages - 1)
