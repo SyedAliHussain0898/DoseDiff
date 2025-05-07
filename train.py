@@ -79,7 +79,7 @@ model.to(device)
 
 schedule_sampler = create_named_schedule_sampler("loss-second-moment", diffusion)
 diffusion = MultiStageSpacedDiffusion(
-    use_timesteps=space_timesteps(args.T, [args.T]),
+    use_timesteps=space_timesteps(args.T, 'ddim4'),
     betas=gd.get_named_beta_schedule("linear", args.T),
     model_mean_type=gd.ModelMeanType.EPSILON,
     model_var_type=gd.ModelVarType.FIXED_LARGE,
