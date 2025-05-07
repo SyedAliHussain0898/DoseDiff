@@ -183,26 +183,25 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
 # -----------------------------------------------------------------------------#
 
 class _WrappedModel(nn.Module):
-    """
-    Converts spaced‑chain indices back to original timesteps before calling the
-    real UNet.  The lookup tensor is a *buffer* so it follows the model’s
-    device / dtype and is saved in checkpoints automatically.
-    """
-
     def __init__(self, model, timestep_map, rescale_timesteps, original_num_steps):
         super().__init__()
-        self.model              = model
+        self.model = model
+        # ----------------------------------------------------- NEW (2 lines)
+        self.register_buffer(
+            "timestep_map", th.as_tensor(timestep_map, dtype=th.long)
+        )
+        # -----------------------------------------------------
         self.rescale_timesteps  = rescale_timesteps
         self.original_num_steps = original_num_steps
-        self.register_buffer("timestep_map",
-                             th.tensor(timestep_map, dtype=th.long))
 
     def forward(self, x, ts, **kwargs):
-        # --- NEW: move the LUT if the batch is on a different device ---
-        if self.timestep_map.device != ts.device:
-            self.timestep_map = self.timestep_map.to(ts.device)
-        # ----------------------------------------------------------------
-        new_ts = self.timestep_map[ts]
+        # make sure lookup table lives on the same device as the batch
+        map_tensor = self.timestep_map
+        if map_tensor.device != ts.device:
+            map_tensor = map_tensor.to(ts.device, non_blocking=True)
+
+        new_ts = map_tensor[ts]                       # safe indexed access
         if self.rescale_timesteps:
             new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
+
         return self.model(x, new_ts, **kwargs)
