@@ -325,7 +325,8 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
 
         # If no stage-specific channels given, create default distribution
         if stage_channels is None:
-            self.stage_channels = [max(model_channels, model_channels // (i + 1)) for i in range(num_stages)]
+            base=model_channels
+            self.stage_channels = [int(base*1.5), base, int(base*0.5)]
         else:
             self.stage_channels = stage_channels
 
