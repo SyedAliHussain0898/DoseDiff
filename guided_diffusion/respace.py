@@ -198,7 +198,11 @@ class _WrappedModel(nn.Module):
                              th.tensor(timestep_map, dtype=th.long))
 
     def forward(self, x, ts, **kwargs):
-        new_ts = self.timestep_map[ts]  # already on same device as model
+        # --- NEW: move the LUT if the batch is on a different device ---
+        if self.timestep_map.device != ts.device:
+            self.timestep_map = self.timestep_map.to(ts.device)
+        # ----------------------------------------------------------------
+        new_ts = self.timestep_map[ts]
         if self.rescale_timesteps:
             new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
         return self.model(x, new_ts, **kwargs)
