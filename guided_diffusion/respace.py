@@ -189,10 +189,7 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
             model_kwargs = {}
             
         # Convert timesteps to indices in the diffusion timesteps
-        t_idx = th.tensor(  
-            [self.timestep_to_index[int(t_i)] for t_i in t.cpu().numpy()],
-            device=t.device, dtype=torch.long
-        )
+        t_idx = [(self.timestep_map == t_i).nonzero()[0][0].item()  for t_i in t.cpu().numpy()]
         
         # Get the stage for each timestep
         stages = self.get_stage(t_idx)
@@ -212,10 +209,7 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
             model_kwargs = {}
             
         # Convert timesteps to indices in the diffusion timesteps
-        t_idx = th.tensor(  
-            [self.timestep_to_index[int(t_i)] for t_i in t.cpu().numpy()],
-            device=t.device, dtype=torch.long
-        )
+        t_idx = [(self.timestep_map == t_i).nonzero()[0][0].item()  for t_i in t.cpu().numpy()]
         
         # Get the stage for each timestep
         stages = self.get_stage(t_idx)
