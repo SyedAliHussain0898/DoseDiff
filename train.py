@@ -88,7 +88,7 @@ diffusion = MultiStageSpacedDiffusion(
     num_stages=3,
    stage_distribution='geometric'
 )
-
+schedule_sampler = create_named_schedule_sampler("loss-second-moment", diffusion)
 diffusion_test = MultiStageSpacedDiffusion(
     use_timesteps=space_timesteps(args.T, 'ddim4'),
     betas=gd.get_named_beta_schedule("linear", args.T),
