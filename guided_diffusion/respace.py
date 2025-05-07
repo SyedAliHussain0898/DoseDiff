@@ -161,9 +161,7 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
             self.stage_boundaries.append(len(self.timestep_map))
         
         # Create mapping from timestep to stage
-         self.timestep_to_index = {
-            orig_t: idx for idx, orig_t in enumerate(self.timestep_map)
-        }
+        self.timestep_to_index = {orig_t: idx for idx, orig_t in enumerate(self.timestep_map)}
         prev_boundary = 0
         for i, boundary in enumerate(self.stage_boundaries):
             for t in range(prev_boundary, boundary):
