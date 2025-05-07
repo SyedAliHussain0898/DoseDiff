@@ -621,7 +621,15 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         return torch.cat(outputs, dim=0), torch.cat(intermediate_outputs, dim=0)
 
     def get_stage_from_timestep(self, timesteps, num_timesteps=1000):
+         """
+        Map DDPM timestep (0 … num_timesteps‑1) → stage index (0 … self.num_stages‑1).
+        """
+        # 1. [0,1] range
         normalized_t = timesteps.float() / (num_timesteps - 1)
-        sstage_indices = (normalized_t * self.num_stages).floor().long()
+
+        # 2. scale to number‑of‑stages and round
+        stage_indices = (normalized_t * (self.num_stages - 1)).round().long()
+
+        # 3. clamp for numerical safety
         stage_indices = stage_indices.clamp(0, self.num_stages - 1)
-        return stage_indices.clamp(0, self.num_stages - 1)
+        return stage_indices
