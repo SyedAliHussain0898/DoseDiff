@@ -211,7 +211,7 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
             model_kwargs = {}
             
         # Convert timesteps to indices in the diffusion timesteps
-         t_idx = torch.tensor(  
+        t_idx = torch.tensor(  
             [self.timestep_to_index[int(t_i)] for t_i in t.cpu().numpy()],
             device=t.device, dtype=torch.long
         )
