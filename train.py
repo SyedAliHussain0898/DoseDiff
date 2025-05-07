@@ -76,8 +76,6 @@ model = UNetModel_MS_Former_MultiStage(
 )
 
 model.to(device)
-
-schedule_sampler = create_named_schedule_sampler("loss-second-moment", diffusion)
 diffusion = MultiStageSpacedDiffusion(
     use_timesteps=space_timesteps(args.T, 'ddim4'),
     betas=gd.get_named_beta_schedule("linear", args.T),
