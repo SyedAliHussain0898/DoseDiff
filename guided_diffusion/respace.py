@@ -215,7 +215,7 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
         stages = th.tensor(stages, device=t.device, dtype=th.long)
         
         # Add stage information to model_kwargs
-        model_kwargs["stages"] = stages
+        model_kwargs["stage_indices"] = stages
         
         # Call the original method with modified model_kwargs
         return super().training_losses(model, x_start, t, model_kwargs, noise)
