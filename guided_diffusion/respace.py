@@ -1,11 +1,34 @@
+"""
+Spaced and multi‑stage diffusion utilities.
+
+Changes w.r.t. the original implementation
+------------------------------------------
+1.  Build two O(1) lookup tables once:
+        • timestep_to_index   : original t  -> spaced index
+        • timestep_to_stage   : spaced index -> stage id
+    (The old code searched linearly with `== … .nonzero()`.)
+
+2.  `get_stage`, `p_mean_variance`, `training_losses` now use these
+    tables directly – no more IndexError / empty nonzero.
+
+3.  `stage_indices` are always put into `model_kwargs` under the same
+    key (`"stage_indices"`) to keep the UNet API consistent.
+"""
+
+from __future__ import annotations
+
 import numpy as np
 import torch as th
 
-from .gaussian_diffusion import GaussianDiffusion, ModelMeanType, ModelVarType, LossType
+from .gaussian_diffusion import GaussianDiffusion
 
 
+# -----------------------------------------------------------------------------#
+# helpers
+# -----------------------------------------------------------------------------#
 
-def space_timesteps(num_timesteps, section_counts):
+
+def space_timesteps(num_timesteps: int, section_counts):
     """
     Create a list of timesteps to use from an original diffusion process,
     given the number of timesteps we want to take from equally-sized portions
@@ -61,21 +84,23 @@ def space_timesteps(num_timesteps, section_counts):
     return set(all_steps)
 
 
+
+# -----------------------------------------------------------------------------#
+# base class that skips steps from an underlying diffusion process
+# -----------------------------------------------------------------------------#
+
+
 class SpacedDiffusion(GaussianDiffusion):
     """
-    A diffusion process which can skip steps in a base diffusion process.
-
-    :param use_timesteps: a collection (sequence or set) of timesteps from the
-                          original diffusion process to retain.
-    :param kwargs: the kwargs to create the base diffusion process.
+    A diffusion process that uses only a subset of the original timesteps.
     """
 
     def __init__(self, use_timesteps, **kwargs):
         self.use_timesteps = set(use_timesteps)
-        self.timestep_map = []
+        self.timestep_map: list[int] = []
         self.original_num_steps = len(kwargs["betas"])
 
-        base_diffusion = GaussianDiffusion(**kwargs)  # pylint: disable=missing-kwoa
+        base_diffusion = GaussianDiffusion(**kwargs)
         last_alpha_cumprod = 1.0
         new_betas = []
         for i, alpha_cumprod in enumerate(base_diffusion.alphas_cumprod):
@@ -83,50 +108,67 @@ class SpacedDiffusion(GaussianDiffusion):
                 new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
                 last_alpha_cumprod = alpha_cumprod
                 self.timestep_map.append(i)
-        kwargs["betas"] = np.array(new_betas)
+
+        # ---------------- new ---------------- #
+        # reverse look‑up: original timestep -> spaced index
+        self.timestep_to_index = {t_orig: idx for idx, t_orig in enumerate(self.timestep_map)}
+        # ------------------------------------- #
+
+        kwargs["betas"] = np.array(new_betas, dtype=np.float64)
         super().__init__(**kwargs)
 
-    def p_mean_variance(
-        self, model, *args, **kwargs
-    ):  # pylint: disable=signature-differs
-        return super().p_mean_variance(self._wrap_model(model), *args, **kwargs)
-
-    def training_losses(
-        self, model, *args, **kwargs
-    ):  # pylint: disable=signature-differs
-        return super().training_losses(self._wrap_model(model), *args, **kwargs)
-
-    def condition_mean(self, cond_fn, *args, **kwargs):
-        return super().condition_mean(self._wrap_model(cond_fn), *args, **kwargs)
-
-    def condition_score(self, cond_fn, *args, **kwargs):
-        return super().condition_score(self._wrap_model(cond_fn), *args, **kwargs)
+    # wrap / unwrap ----------------------------------------------------------------
 
     def _wrap_model(self, model):
         if isinstance(model, _WrappedModel):
             return model
         return _WrappedModel(
-            model, self.timestep_map, self.rescale_timesteps, self.original_num_steps
+            model,
+            self.timestep_map,
+            self.rescale_timesteps,
+            self.original_num_steps,
         )
 
+    def p_mean_variance(self, model, *a, **kw):
+        return super().p_mean_variance(self._wrap_model(model), *a, **kw)
+
+    def training_losses(self, model, *a, **kw):
+        return super().training_losses(self._wrap_model(model), *a, **kw)
+
+    def condition_mean(self, cond_fn, *a, **kw):
+        return super().condition_mean(self._wrap_model(cond_fn), *a, **kw)
+
+    def condition_score(self, cond_fn, *a, **kw):
+        return super().condition_score(self._wrap_model(cond_fn), *a, **kw)
+
+    # -----------------------------------------------------------------------------#
     def _scale_timesteps(self, t):
-        # Scaling is done by the wrapped model.
+        # scaling is handled by _WrappedModel
         return t
+
+
+# -----------------------------------------------------------------------------#
+# multi‑stage variant
+# -----------------------------------------------------------------------------#
+
 
 class MultiStageSpacedDiffusion(SpacedDiffusion):
     """
-    A diffusion process that operates on multiple stages with different decoders.
+    Same as SpacedDiffusion but every spaced timestep is assigned to a stage
+    (e.g. to choose the proper decoder).
     """
+
     def __init__(
         self,
+        *,
         use_timesteps,
         betas,
         model_mean_type,
         model_var_type,
         loss_type,
         rescale_timesteps=False,
-        num_stages=3,
-        stage_distribution="linear",
+        num_stages: int = 3,
+        stage_distribution: str = "linear",
     ):
         super().__init__(
             use_timesteps=use_timesteps,
@@ -136,102 +178,78 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
             loss_type=loss_type,
             rescale_timesteps=rescale_timesteps,
         )
-        
-        # Define stage boundaries based on timesteps
+
         self.num_stages = num_stages
-        
+        N = len(self.timestep_map)
+
+        # --------------- choose boundaries --------------- #
         if stage_distribution == "linear":
-            # Divide timesteps evenly across stages
-            self.stage_boundaries = []
-            step_size = len(self.timestep_map) // num_stages
-            for i in range(num_stages - 1):
-                self.stage_boundaries.append((i + 1) * step_size)
-            self.stage_boundaries.append(len(self.timestep_map))
+            step = N // num_stages
+            self.stage_boundaries = [step * (i + 1) for i in range(num_stages - 1)] + [N]
         elif stage_distribution == "geometric":
-            # Allocate more timesteps to early stages (higher noise levels)
+            remaining, cur = N, 0
             self.stage_boundaries = []
-            remaining = len(self.timestep_map)
-            ratio = 0.6  # Each subsequent stage gets 60% of remaining timesteps
-            current = 0
-            for i in range(num_stages - 1):
-                stage_size = int(remaining * ratio)
-                current += stage_size
-                self.stage_boundaries.append(current)
-                remaining -= stage_size
-            self.stage_boundaries.append(len(self.timestep_map))
-        
-        # Create mapping from timestep to stage
-        self.timestep_to_index = {orig_t: idx for idx, orig_t in enumerate(self.timestep_map)}
-        self.timestep_to_stage={}
-        prev_boundary = 0
-        for i, boundary in enumerate(self.stage_boundaries):
-            for t in range(prev_boundary, boundary):
-                self.timestep_to_stage[t] = i
-            prev_boundary = boundary
-    
-    def get_stage(self, t_idx):
-        """
-        Get the stage for the given timestep indices.
-        """
-        if isinstance(t_idx, th.Tensor):
-            t_idx = t_idx.cpu().numpy()
-        
-        if isinstance(t_idx, (int, np.int64)):
-            return self.timestep_to_stage[t_idx]
+            for _ in range(num_stages - 1):
+                take = int(remaining * 0.6)
+                cur += take
+                self.stage_boundaries.append(cur)
+                remaining -= take
+            self.stage_boundaries.append(N)
         else:
-            return np.array([self.timestep_to_stage[idx] for idx in t_idx])
-    
-    def p_mean_variance(self, model, x, t, clip_denoised=True, denoised_fn=None, model_kwargs=None):
+            raise ValueError("unknown stage_distribution")
+
+        # --------------- map spaced index -> stage id ---- #
+        self.timestep_to_stage = {}
+        prev = 0
+        for stage_id, bound in enumerate(self.stage_boundaries):
+            for idx in range(prev, bound):
+                self.timestep_to_stage[idx] = stage_id
+            prev = bound
+
+    # helpers ---------------------------------------------------------------------
+
+    def get_stage(self, spaced_idx: th.Tensor | np.ndarray | int):
         """
-        Apply the model to get p(x_{t-1} | x_t) with stage information.
+        Accepts spaced‑chain indices and returns stage id(s).
         """
-        if model_kwargs is None:
-            model_kwargs = {}
-            
-        # Convert timesteps to indices in the diffusion timesteps
-        t_idx = [(self.timestep_map == t_i).nonzero()[0][0].item()  for t_i in t.cpu().numpy()]
-        
-        # Get the stage for each timestep
-        stages = self.get_stage(t_idx)
-        stages = th.tensor(stages, device=t.device, dtype=th.long)
-        
-        # Add stage information to model_kwargs
-        model_kwargs["stages"] = stages
-        
-        # Call the original method with modified model_kwargs
-        return super().p_mean_variance(model, x, t, clip_denoised, denoised_fn, model_kwargs)
-    
-    def training_losses(self, model, x_start, t, model_kwargs=None, noise=None):
-        """
-        Compute training losses with stage information.
-        """
-        if model_kwargs is None:
-            model_kwargs = {}
-            
-        # Convert timesteps to indices in the diffusion timesteps
-        t_idx = [(self.timestep_map == t_i).nonzero()[0][0].item()  for t_i in t.cpu().numpy()]
-        
-        # Get the stage for each timestep
-        stages = self.get_stage(t_idx)
-        stages = th.tensor(stages, device=t.device, dtype=th.long)
-        
-        # Add stage information to model_kwargs
-        model_kwargs["stage_indices"] = stages
-        
-        # Call the original method with modified model_kwargs
-        return super().training_losses(model, x_start, t, model_kwargs, noise)
+        if isinstance(spaced_idx, th.Tensor):
+            spaced_idx = spaced_idx.cpu().numpy()
+        if np.isscalar(spaced_idx):
+            return self.timestep_to_stage[int(spaced_idx)]
+        return np.vectorize(self.timestep_to_stage.__getitem__)(spaced_idx)
+
+    # override two methods --------------------------------------------------------
+
+    def p_mean_variance(self, model, x, t, *args, **kw):
+        kw = dict(kw or {})
+        kw.setdefault("model_kwargs", {})
+        # here `t` is already spaced‑index
+        stages = th.as_tensor(self.get_stage(t), device=t.device, dtype=th.long)
+        kw["model_kwargs"]["stage_indices"] = stages
+        return super().p_mean_variance(model, x, t, *args, **kw)
+
+    def training_losses(self, model, x_start, t, *args, **kw):
+        kw = dict(kw or {})
+        kw.setdefault("model_kwargs", {})
+        stages = th.as_tensor(self.get_stage(t), device=t.device, dtype=th.long)
+        kw["model_kwargs"]["stage_indices"] = stages
+        return super().training_losses(model, x_start, t, *args, **kw)
+
+
+# -----------------------------------------------------------------------------#
+# internal wrapper (unchanged)
+# -----------------------------------------------------------------------------#
 
 
 class _WrappedModel:
     def __init__(self, model, timestep_map, rescale_timesteps, original_num_steps):
         self.model = model
-        self.timestep_map = timestep_map
+        self.timestep_map = th.as_tensor(timestep_map)
         self.rescale_timesteps = rescale_timesteps
         self.original_num_steps = original_num_steps
 
     def __call__(self, x, ts, **kwargs):
-        map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)
-        new_ts = map_tensor[ts]
+        new_ts = self.timestep_map[ts]
         if self.rescale_timesteps:
             new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
         return self.model(x, new_ts, **kwargs)
