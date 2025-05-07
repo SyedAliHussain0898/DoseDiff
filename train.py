@@ -100,8 +100,17 @@ diffusion_test = MultiStageSpacedDiffusion(
     stage_distribution='geometric'
 )
 
-optimizer = optim.AdamW(model.parameters(), lr=lr_max, weight_decay=L2)
-lr_scheduler = MultiStepLR(optimizer, milestones=[int((7 / 10) * args.epoch)], gamma=0.1, last_epoch=-1)
+optimizer = optim.AdamW([
+        {'params': model.time_embed.parameters(),      'lr': lr_max,   'weight_decay':0},
+        {'params': model.input_blocks.parameters(),    'lr': lr_max,   'weight_decay':L2},
+        {'params': model.middle_block.parameters(),    'lr': lr_max*0.5},
+        {'params': model.output_blocks.parameters(),   'lr': lr_max},
+    ])
+warmup_steps = 500
+lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer, lambda s: min(1., s / warmup_steps)
+)
+
 
 best_MAE = 1000
 epoch_start = 0
