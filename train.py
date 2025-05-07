@@ -9,7 +9,7 @@ import argparse
 import shutil
 from guided_diffusion.unet import UNetModel_MS_Former_MultiStage
 from guided_diffusion import gaussian_diffusion as gd
-from guided_diffusion.respace import SpacedDiffusion, space_timesteps
+from guided_diffusion.respace import MultiStageSpacedDiffusion, space_timesteps
 from guided_diffusion.resample import create_named_schedule_sampler
 from torchvision.utils import make_grid
 from torch.optim.lr_scheduler import MultiStepLR
@@ -78,22 +78,26 @@ model = UNetModel_MS_Former_MultiStage(
 model.to(device)
 
 schedule_sampler = create_named_schedule_sampler("uniform", None)
-diffusion = SpacedDiffusion(
+diffusion = MultiStageSpacedDiffusion(
     use_timesteps=space_timesteps(args.T, [args.T]),
     betas=gd.get_named_beta_schedule("linear", args.T),
     model_mean_type=gd.ModelMeanType.EPSILON,
     model_var_type=gd.ModelVarType.FIXED_LARGE,
     loss_type=gd.LossType.MSE,
-    rescale_timesteps=False
+    rescale_timesteps=False,
+    num_stages=3,
+   stage_distribution='geometric'
 )
 
-diffusion_test = SpacedDiffusion(
+diffusion_test = MultiStageSpacedDiffusion(
     use_timesteps=space_timesteps(args.T, 'ddim4'),
     betas=gd.get_named_beta_schedule("linear", args.T),
     model_mean_type=gd.ModelMeanType.EPSILON,
     model_var_type=gd.ModelVarType.FIXED_LARGE,
     loss_type=gd.LossType.MSE,
-    rescale_timesteps=False
+    rescale_timesteps=False,
+    num_stages=3,
+    stage_distribution='geometric'
 )
 
 optimizer = optim.AdamW(model.parameters(), lr=lr_max, weight_decay=L2)
