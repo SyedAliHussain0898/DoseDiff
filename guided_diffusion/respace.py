@@ -244,12 +244,15 @@ class MultiStageSpacedDiffusion(SpacedDiffusion):
 class _WrappedModel:
     def __init__(self, model, timestep_map, rescale_timesteps, original_num_steps):
         self.model = model
-        self.timestep_map = th.as_tensor(timestep_map)
+        if self.timestep_map.device != ts.device:                 # NEW
+            map_tensor = self.timestep_map.to(ts.device)          # NEW
+        else:                                                     # NEW
+            map_tensor = self.timestep_map
         self.rescale_timesteps = rescale_timesteps
         self.original_num_steps = original_num_steps
 
     def __call__(self, x, ts, **kwargs):
-        new_ts = self.timestep_map[ts]
+        new_ts = map_tensor[ts]
         if self.rescale_timesteps:
             new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
         return self.model(x, new_ts, **kwargs)
