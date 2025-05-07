@@ -346,7 +346,6 @@ class UNetModel_MS_Former_MultiStage(nn.Module):
         use_scale_shift_norm=False,
         resblock_updown=False,
         use_new_attention_order=False,
-        *,
         num_stages: int = 3,
         stage_channels: Sequence[int] | None = None,
     ):
